@@ -73,8 +73,8 @@ export default class Bot
             await Bot.WaitRandom(page, 1000);
 
             const cursor = createCursor(page);
-            // await cursor.click(selectors.joinGroup);
-            await page.click(selectors.joinGroup);
+            const el = (await page.$$("div[role='button']"))[13];
+            await el.click();
 
             await Bot.WaitRandom(page, 3000);
 
@@ -97,6 +97,8 @@ export default class Bot
         }
         catch (error)
         {
+            console.log(error);
+
             callback?.call({ success: false, error });
             return { success: false, error };
         }
@@ -402,10 +404,18 @@ export default class Bot
 
             for (let i = 0; i < data.length; i++)
             {
-                //get all the names of the requests
-                const selector = `${selectors.friendsReqGrid} > div:nth-child(${i + 1}) > div > a > div[aria-label='Confirm']`;
-                await page.$eval(selector, (el) => el.scrollIntoView({ block: "end", behavior: "smooth" }));
-                cursor.click(selector);
+                try
+                {
+                    const selector = `${selectors.friendsReqGrid} > div:nth-child(${i + 1}) > div > a > div[aria-label='Confirm']`;
+                    await page.$eval(selector, (el) => el.scrollIntoView({ block: "end", behavior: "smooth" }));
+                    cursor.click(selector);
+                }
+                catch
+                {
+                    const selector = selectors.friendReqConfirm;
+                    await page.$$eval(selector, (el, x) => el[x].scrollIntoView({ block: "end", behavior: "smooth" }), i);
+                    cursor.click((await page.$$(selector))[i]);
+                }
             }
 
             callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
@@ -492,11 +502,14 @@ export default class Bot
     {
         try
         {
+            await page.setViewport({ width: 523, height: 674});
             await page.goto(url!);
             await page.waitForSelector(selectors.inviteFriendGroup);
             const cursor = createCursor(page);
 
-            await cursor.click(selectors.inviteFriendGroup);
+            const inv = await page.$(selectors.inviteFriendGroup);
+            // await cursor.click(selectors.inviteFriendGroup);
+            inv?.click();
 
             await page.waitForSelector(selectors.searchFriendInvite);
             await Bot.WaitRandom(page, 1500);
@@ -533,8 +546,8 @@ export default class Bot
             await page.goto(url!);
             await page.waitForSelector(selectors.search);
 
-            callback?.call({ success: true, data: await page.cookies() });
-            return { success: true, data: await page.cookies() };
+            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
+            return { success: true, data: JSON.stringify(await page.cookies()) };
         } catch (error)
         {
 
@@ -550,8 +563,12 @@ export default class Bot
             await page.goto(url!);
             await page.waitForSelector(selectors.membersButton);
 
+            await Bot.WaitRandom(page, 3000);
+
             const cursor = createCursor(page);
-            await cursor.click(selectors.membersButton);
+            // await cursor.click(selectors.membersButton);
+            const but = await page.$$(selectors.membersButton);
+            await cursor.click(but[9]);
 
             await Bot.WaitRandom(page, 2500);
 
@@ -560,7 +577,7 @@ export default class Bot
             const members: { name: string, url: string }[] = []
             for (let i = 0; i < length; i++)
             {
-                const el: ElementHandle = (await page.$$(selectors.membersContainer))[3];
+                const el: ElementHandle = (await page.$$(selectors.membersContainer))[1];
                 //get all the names of the requests
                 // const selector = `${selectors.membersContainer} > div:nth-child(${i + 1})`;
                 // const url: string = await page.evaluate((sel) => ((document.querySelector(sel)).querySelectorAll("a")[1]).href, selector);
@@ -749,7 +766,7 @@ export default class Bot
             try
             {
                 let oldLength, newLength = 0;
-                let x = (document.querySelectorAll(s))[3];
+                let x = (document.querySelectorAll(s))[1];
                 do
                 {
                     oldLength = x?.children.length;
