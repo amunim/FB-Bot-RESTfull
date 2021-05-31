@@ -134,7 +134,7 @@ class Bot {
         let members = await page.evaluate(async (s) => {
             try {
                 let oldLength, newLength = 0;
-                let x = (document.querySelectorAll(s))[3];
+                let x = (document.querySelectorAll(s))[1];
                 do {
                     oldLength = x === null || x === void 0 ? void 0 : x.children.length;
                     if (document.scrollingElement)
@@ -188,8 +188,8 @@ Bot.JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }) => {
         await page.waitForSelector(selectors_json_1.default.joinGroup);
         await Bot.WaitRandom(page, 1000);
         const cursor = ghost_cursor_1.createCursor(page);
-        // await cursor.click(selectors.joinGroup);
-        await page.click(selectors_json_1.default.joinGroup);
+        const el = (await page.$$("div[role='button']"))[13];
+        await el.click();
         await Bot.WaitRandom(page, 3000);
         try {
             await page.waitForSelector(selectors_json_1.default.cancelAnswers, { timeout: 10 * 1000 });
@@ -204,6 +204,7 @@ Bot.JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }) => {
         return { success: true, data: JSON.stringify(await page.cookies()) };
     }
     catch (error) {
+        console.log(error);
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
         return { success: false, error };
     }
@@ -415,10 +416,16 @@ Bot.AcceptAllFriendReq = async ({ page = Bot.page, data: { callback } }) => {
         if (!data)
             return { success: true, data: page.cookies() };
         for (let i = 0; i < data.length; i++) {
-            //get all the names of the requests
-            const selector = `${selectors_json_1.default.friendsReqGrid} > div:nth-child(${i + 1}) > div > a > div[aria-label='Confirm']`;
-            await page.$eval(selector, (el) => el.scrollIntoView({ block: "end", behavior: "smooth" }));
-            cursor.click(selector);
+            try {
+                const selector = `${selectors_json_1.default.friendsReqGrid} > div:nth-child(${i + 1}) > div > a > div[aria-label='Confirm']`;
+                await page.$eval(selector, (el) => el.scrollIntoView({ block: "end", behavior: "smooth" }));
+                cursor.click(selector);
+            }
+            catch (_a) {
+                const selector = selectors_json_1.default.friendReqConfirm;
+                await page.$$eval(selector, (el, x) => el[x].scrollIntoView({ block: "end", behavior: "smooth" }), i);
+                cursor.click((await page.$$(selector))[i]);
+            }
         }
         callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
         return { success: true, data: JSON.stringify(await page.cookies()) };
@@ -476,10 +483,13 @@ Bot.PostOnWall = async ({ page = Bot.page, data: { message, callback } }) => {
 };
 Bot.InviteFriendGroup = async ({ page = Bot.page, data: { url, message, callback } }) => {
     try {
+        await page.setViewport({ width: 523, height: 674 });
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.inviteFriendGroup);
         const cursor = ghost_cursor_1.createCursor(page);
-        await cursor.click(selectors_json_1.default.inviteFriendGroup);
+        const inv = await page.$(selectors_json_1.default.inviteFriendGroup);
+        // await cursor.click(selectors.inviteFriendGroup);
+        inv === null || inv === void 0 ? void 0 : inv.click();
         await page.waitForSelector(selectors_json_1.default.searchFriendInvite);
         await Bot.WaitRandom(page, 1500);
         await cursor.click(selectors_json_1.default.searchFriendInvite);
@@ -505,8 +515,8 @@ Bot.EnterGroup = async ({ page = Bot.page, data: { url, callback } }) => {
     try {
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.search);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: await page.cookies() });
-        return { success: true, data: await page.cookies() };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
+        return { success: true, data: JSON.stringify(await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -517,13 +527,16 @@ Bot.GetGroupMembers = async ({ page = Bot.page, data: { url, callback } }) => {
     try {
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.membersButton);
+        await Bot.WaitRandom(page, 3000);
         const cursor = ghost_cursor_1.createCursor(page);
-        await cursor.click(selectors_json_1.default.membersButton);
+        // await cursor.click(selectors.membersButton);
+        const but = await page.$$(selectors_json_1.default.membersButton);
+        await cursor.click(but[9]);
         await Bot.WaitRandom(page, 2500);
         let length = await Bot.autoScrollMembers(page);
         const members = [];
         for (let i = 0; i < length; i++) {
-            const el = (await page.$$(selectors_json_1.default.membersContainer))[3];
+            const el = (await page.$$(selectors_json_1.default.membersContainer))[1];
             //get all the names of the requests
             // const selector = `${selectors.membersContainer} > div:nth-child(${i + 1})`;
             // const url: string = await page.evaluate((sel) => ((document.querySelector(sel)).querySelectorAll("a")[1]).href, selector);

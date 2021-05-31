@@ -21,6 +21,7 @@
     "friendRespondAccept": "div[role='menuitem']",
     "friendsReqGrid": "div[role='grid'] > div:last-child",
     "friendRequestsWall": "div[aria-label='Friend requests']",
+    "friendReqConfirm": "div[aria-label='Confirm']",
     "friendReqGridScroller": "div[aria-label='Friend Requests'] > div > div:nth-child(2)",
     "friendReqGridScroller2": "div[aria-label='Friend Requests'] > div > div:nth-child(3)",
     "pageCreatePost": "div[aria-label='Create Post']",
@@ -31,8 +32,8 @@
     "inviteFriendGroup": "div[aria-label='Invite']",
     "searchFriendInvite": "input[aria-label='Search for friends by name']",
     "searchResultFriendInvite": "div[role='checkbox']",
-    "sendFriendInvite": "div[aria-label='Send Invites']",
-    "membersButton": "a[role='tab']:nth-child(6)",
+    "sendFriendInvite": "div[aria-label='Send Invitations']",
+    "membersButton": "a[role='tab']",
     "membersContainer": "div[class='b20td4e0 muag1w35']",
     "groupsFeed": "div[role='feed'] > div"
 }

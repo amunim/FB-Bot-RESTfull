@@ -144,7 +144,7 @@ app.post("/groups/enter", [body("url").isURL()], async (req, res) =>
     return res.json({ success, error, data });
 });
 
-app.post("/wall", [body("message").isURL()], async (req, res) =>
+app.post("/wall", [body("message").isString()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -156,7 +156,7 @@ app.post("/wall", [body("message").isURL()], async (req, res) =>
     return res.json({ success, error, data });
 });
 
-app.post("/page", [body("message").isURL(), body("url").isURL()], async (req, res) =>
+app.post("/page", [body("message").isString(), body("url").isURL()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
