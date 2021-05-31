@@ -182,6 +182,83 @@ class Bot {
 }
 exports.default = Bot;
 Bot.accounts = new Map();
+Bot.RegisterCode = async ({ page = Bot.page, data: { message, callback } }) => {
+    if (!message) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: "Please enter a valid code" });
+        return { success: false, error: "Please enter a valid code" };
+    }
+    try {
+        await page.waitForSelector(selectors_json_1.default.fbCode);
+        const cursor = ghost_cursor_1.createCursor(page);
+        await cursor.click(selectors_json_1.default.fbCode);
+        await page.keyboard.type(message, { delay: 270 });
+        await Bot.WaitRandom(page, 1500);
+        await cursor.click(selectors_json_1.default.continueCode);
+        await Bot.WaitRandom(page, 3000);
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: JSON.stringify(await page.cookies()) });
+        return { success: false, data: JSON.stringify(await page.cookies()) };
+    }
+    catch (error) {
+        console.log(error);
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
+        return { success: false, error };
+    }
+};
+Bot.RegisterAccount = async ({ page = Bot.page, data: { email, pass, message, callback } }) => {
+    if (!message) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: "Please give first name and last name in 'message'" });
+        return { success: false, error: "Please give first name and last name in 'message'" };
+    }
+    try {
+        await page.goto("https://en-gb.facebook.com/");
+        const cursor = ghost_cursor_1.createCursor(page);
+        await cursor.click(selectors_json_1.default.createNewAccount);
+        await page.waitForSelector(selectors_json_1.default.firstName);
+        await Bot.WaitRandom(page, 1500);
+        await cursor.click(selectors_json_1.default.firstName);
+        await Bot.WaitRandom(page, 200);
+        await page.keyboard.type(message.split(" ")[0], { delay: 350 });
+        await Bot.WaitRandom(page, 1000);
+        await cursor.click(selectors_json_1.default.lastName);
+        await Bot.WaitRandom(page, 200);
+        await page.keyboard.type(message.split(" ")[1], { delay: 250 });
+        await Bot.WaitRandom(page, 1000);
+        await cursor.click(selectors_json_1.default.emailOrPhone);
+        await Bot.WaitRandom(page, 200);
+        await page.keyboard.type(email, { delay: 300 });
+        await Bot.WaitRandom(page, 1000);
+        await Bot.WaitRandom(page, 1000);
+        if (await page.$(selectors_json_1.default.reEnterEmail)) {
+            await cursor.click(selectors_json_1.default.reEnterEmail);
+            await Bot.WaitRandom(page, 200);
+            await page.keyboard.type(email, { delay: 320 });
+            await Bot.WaitRandom(page, 1000);
+        }
+        await cursor.click(selectors_json_1.default.newPassword);
+        await Bot.WaitRandom(page, 200);
+        await page.keyboard.type(pass, { delay: 280 });
+        await Bot.WaitRandom(page, 1000);
+        await page.select(selectors_json_1.default.day, (Math.floor(Math.random() * 29 + 1)).toString());
+        await Bot.WaitRandom(page, 1000);
+        await page.select(selectors_json_1.default.month, (Math.floor(Math.random() * 12)).toString());
+        await Bot.WaitRandom(page, 1000);
+        await page.select(selectors_json_1.default.year, (Math.floor(Math.random() * 10 + 1990)).toString());
+        await Bot.WaitRandom(page, 1000);
+        const genders = await page.$$(selectors_json_1.default.sex);
+        genders[Math.round(Math.random())].click();
+        await Bot.WaitRandom(page, 1000);
+        await cursor.click(selectors_json_1.default.signUp);
+        await Bot.WaitRandom(page, 4000);
+        Bot.accounts[email] = JSON.stringify(await page.cookies());
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: JSON.stringify(await page.cookies()) });
+        return { success: false, data: JSON.stringify(await page.cookies()) };
+    }
+    catch (error) {
+        console.log(error);
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
+        return { success: false, error };
+    }
+};
 Bot.JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }) => {
     try {
         await page.goto(url);

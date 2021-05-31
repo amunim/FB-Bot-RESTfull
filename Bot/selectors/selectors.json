@@ -35,5 +35,19 @@
     "sendFriendInvite": "div[aria-label='Send Invitations']",
     "membersButton": "a[role='tab']",
     "membersContainer": "div[class='b20td4e0 muag1w35']",
-    "groupsFeed": "div[role='feed'] > div"
+    "groupsFeed": "div[role='feed'] > div",
+    "createNewAccount": "a[data-testid='open-registration-form-button']",
+    "firstName": "input[aria-label='First name']",
+    "lastName": "input[aria-label='Surname']",
+    "emailOrPhone": "input[aria-label='Mobile number or email address']",
+    "reEnterEmail": "input[aria-label='Re-enter email address']",
+    "newPassword": "input[aria-label='New password']",
+    "day": "#day",
+    "month": "#month",
+    "year": "#year",
+    "sex": "input[name='sex']",
+    "fbCode": "input[name='code']",
+    "resendEmail": "a[rel='dialog-post']",
+    "continueCode": "button[name='confirm']",
+    "signUp": "button[name='websubmit']"
 }

@@ -64,6 +64,116 @@ export default class Bot
         Bot.page = await browser.newPage();
     }
 
+    public static RegisterCode = async ({ page = Bot.page, data: { message, callback } }: { page: Page, data: IData }) =>
+    {
+        if (!message)
+        {
+            callback?.call({ success: false, error: "Please enter a valid code" });
+            return { success: false, error: "Please enter a valid code" };
+        }
+
+        try
+        {
+            await page.waitForSelector(selectors.fbCode);
+
+            const cursor = createCursor(page);
+            await cursor.click(selectors.fbCode);
+            await page.keyboard.type(message!, { delay: 270 });
+
+            await Bot.WaitRandom(page, 1500);
+            
+            await cursor.click(selectors.continueCode);
+
+            await Bot.WaitRandom(page, 3000);
+            
+            callback?.call({ success: false, data: JSON.stringify(await page.cookies()) });
+            return { success: false, data: JSON.stringify(await page.cookies()) };
+        }
+        catch (error)
+        {
+            console.log(error);
+
+            callback?.call({ success: false, error });
+            return { success: false, error };
+        }
+    }
+
+    public static RegisterAccount = async ({ page = Bot.page, data: { email, pass, message, callback } }: { page?: Page, data: IData }) => 
+    {
+        if (!message)
+        {
+            callback?.call({ success: false, error: "Please give first name and last name in 'message'" });
+            return { success: false, error: "Please give first name and last name in 'message'" };
+        }
+
+        try
+        {
+            await page.goto("https://en-gb.facebook.com/");
+            const cursor = createCursor(page);
+
+            await cursor.click(selectors.createNewAccount);
+
+            await page.waitForSelector(selectors.firstName);
+            await Bot.WaitRandom(page, 1500);
+
+            await cursor.click(selectors.firstName);
+            await Bot.WaitRandom(page, 200);
+            await page.keyboard.type(message.split(" ")[0], { delay: 350 });
+            await Bot.WaitRandom(page, 1000);
+
+            await cursor.click(selectors.lastName);
+            await Bot.WaitRandom(page, 200);
+            await page.keyboard.type(message.split(" ")[1], { delay: 250 });
+            await Bot.WaitRandom(page, 1000);
+
+            await cursor.click(selectors.emailOrPhone);
+            await Bot.WaitRandom(page, 200);
+            await page.keyboard.type(email!, { delay: 300 });
+            await Bot.WaitRandom(page, 1000);
+
+            await Bot.WaitRandom(page, 1000);
+
+            if (await page.$(selectors.reEnterEmail))
+            {
+                await cursor.click(selectors.reEnterEmail);
+                await Bot.WaitRandom(page, 200);
+                await page.keyboard.type(email!, { delay: 320 });
+                await Bot.WaitRandom(page, 1000);
+            }
+
+            await cursor.click(selectors.newPassword);
+            await Bot.WaitRandom(page, 200);
+            await page.keyboard.type(pass!, { delay: 280 });
+            await Bot.WaitRandom(page, 1000);
+
+            await page.select(selectors.day, (Math.floor(Math.random() * 29 + 1)).toString());
+            await Bot.WaitRandom(page, 1000);
+            await page.select(selectors.month, (Math.floor(Math.random() * 12)).toString());
+            await Bot.WaitRandom(page, 1000);
+            await page.select(selectors.year, (Math.floor(Math.random() * 10 + 1990)).toString())
+            await Bot.WaitRandom(page, 1000);
+            
+            const genders = await page.$$(selectors.sex);
+            genders[Math.round(Math.random())].click();
+            
+            await Bot.WaitRandom(page, 1000);
+            await cursor.click(selectors.signUp);
+            
+            await Bot.WaitRandom(page, 4000);
+
+            Bot.accounts[email!] = JSON.stringify(await page.cookies());
+            callback?.call({ success: false, data: JSON.stringify(await page.cookies()) });
+            return { success: false, data: JSON.stringify(await page.cookies()) };
+        }
+        catch (error)
+        {
+            console.log(error);
+
+            callback?.call({ success: false, error });
+            return { success: false, error };
+        }
+    }
+
     public static JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }: { page?: Page, data: IData }) =>
     {
         try
@@ -502,7 +612,7 @@ export default class Bot
     {
         try
         {
-            await page.setViewport({ width: 523, height: 674});
+            await page.setViewport({ width: 523, height: 674 });
             await page.goto(url!);
             await page.waitForSelector(selectors.inviteFriendGroup);
             const cursor = createCursor(page);
