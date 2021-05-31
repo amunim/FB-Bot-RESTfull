@@ -18,6 +18,41 @@ const port = 3030;
 app.use(express.json());
 app.use(cors());
 
+app.post("/register-code", [body("code").isNumeric()], async (req, res) => 
+{    
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+
+    const { success, error, data } = await Bot.RegisterCode({
+        data: {
+            message: req.body.code
+        }
+    });
+
+    return res.json({ success, error, data: data });
+})
+
+app.post("/register", [body("email").isEmail(), body("pass").isStrongPassword(), body("first_name").isString(), body("last_name").isString()], async (req, res) => 
+{
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+
+    await bot.setup(config.maxconcurrency);
+    const { success, error, data } = await Bot.RegisterAccount({
+        data: {
+            email: req.body.email, pass: req.body.pass, message: req.body.first_name.trim() + " " + req.body.last_name.trim()
+        }
+    });
+
+    return res.json({ success, error, data: data });
+});
+
 app.get("/current-user", (req, res) => 
 {
     const user = Bot.GetCurrentUser();
