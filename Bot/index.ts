@@ -1,4 +1,4 @@
-import vanillaPuppeteer, { Cookie, ElementHandle, Page } from "puppeteer";
+import vanillaPuppeteer, { Browser, Cookie, ElementHandle, Page } from "puppeteer";
 
 import { addExtra, PuppeteerExtra } from "puppeteer-extra";
 import Stealth from "puppeteer-extra-plugin-stealth";
@@ -7,6 +7,7 @@ import { createCursor } from "ghost-cursor";
 import selectors from "./selectors/selectors.json";
 
 import { installMouseHelper } from "./extensions/install-mouse-helper";
+import config from "./config.json";
 export type Callback = (data?: ReturnData) => Promise<void>;
 export interface IData 
 {
@@ -28,7 +29,10 @@ export default class Bot
 {
     private static page: Page;
     private static accounts = new Map<string, Cookie[]>();
+    private static browser: Browser;
     private puppeteer: PuppeteerExtra;
+
+    private static loggedIn: boolean = false;
 
     constructor()
     {
@@ -53,16 +57,16 @@ export default class Bot
         //         console.error("\x1b[31m%s\x1b[0m", `Error crawling ${data}: ${err.message}`);
         //     });
 
-        const browser = await this.puppeteer.launch(
+        Bot.browser = await this.puppeteer.launch(
             {
-                headless: true,
+                headless: config.headless,
                 args: ['--no-sandbox']
             }
         );
-        const context = browser.defaultBrowserContext();
+        const context = Bot.browser.defaultBrowserContext();
         context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
 
-        Bot.page = await browser.newPage();
+        Bot.page = await Bot.browser.newPage();
     }
 
     public static RegisterCode = async ({ page = Bot.page, data: { message, callback } }: { page: Page, data: IData }) =>
@@ -82,13 +86,13 @@ export default class Bot
             await page.keyboard.type(message!, { delay: 270 });
 
             await Bot.WaitRandom(page, 1500);
-            
+
             await cursor.click(selectors.continueCode);
 
             await Bot.WaitRandom(page, 3000);
-            
-            callback?.call({ success: false, data: JSON.stringify(await page.cookies()) });
-            return { success: false, data: JSON.stringify(await page.cookies()) };
+
+            callback?.call({ success: false, data: (await page.cookies()) });
+            return { success: false, data: (await page.cookies()) };
         }
         catch (error)
         {
@@ -153,18 +157,18 @@ export default class Bot
             await Bot.WaitRandom(page, 1000);
             await page.select(selectors.year, (Math.floor(Math.random() * 10 + 1990)).toString())
             await Bot.WaitRandom(page, 1000);
-            
+
             const genders = await page.$$(selectors.sex);
             genders[Math.round(Math.random())].click();
-            
+
             await Bot.WaitRandom(page, 1000);
             await cursor.click(selectors.signUp);
-            
+
             await Bot.WaitRandom(page, 4000);
 
-            Bot.accounts[email!] = JSON.stringify(await page.cookies());
-            callback?.call({ success: false, data: JSON.stringify(await page.cookies()) });
-            return { success: false, data: JSON.stringify(await page.cookies()) };
+            Bot.accounts[email!] = (await page.cookies());
+            callback?.call({ success: false, data: (await page.cookies()) });
+            return { success: false, data: (await page.cookies()) };
         }
         catch (error)
         {
@@ -203,8 +207,8 @@ export default class Bot
 
             }
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            callback?.call({ success: true, data: (await page.cookies()) });
+            return { success: true, data: (await page.cookies()) };
         }
         catch (error)
         {
@@ -248,8 +252,8 @@ export default class Bot
 
             await Bot.WaitRandom(page, 3000);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            callback?.call({ success: true, data: (await page.cookies()) });
+            return { success: true, data: (await page.cookies()) };
         }
         catch (error)
         {
@@ -284,8 +288,8 @@ export default class Bot
             await cursor.click(selectors.profileMessage);
             await page.waitForSelector(selectors.messageInputBox);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            callback?.call({ success: true, data: (await page.cookies()) });
+            return { success: true, data: (await page.cookies()) };
         }
         catch (error)
         {
@@ -321,9 +325,9 @@ export default class Bot
             await page.keyboard.type(message!, { delay: 350 });
             await page.keyboard.press(String.fromCharCode(13));
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
+            callback?.call({ success: true, data: (await page.cookies()) });
 
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            return { success: true, data: (await page.cookies()) };
         }
         catch (error)
         {
@@ -345,7 +349,7 @@ export default class Bot
             }
             else
             {
-                await page.goto("https://facebook.com/");
+                await page.goto("https://en-gb.facebook.com/");
                 await page.waitForSelector(selectors.email);
                 const cursor = createCursor(page);
                 await installMouseHelper(page);
@@ -364,11 +368,12 @@ export default class Bot
             }
             await page.waitForSelector(selectors.search);
 
-            Bot.accounts[email!] = JSON.stringify(await page.cookies());
+            Bot.accounts[email!] = await page.cookies();
+            Bot.loggedIn = true;
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
+            callback?.call({ success: true, data: await page.cookies() });
 
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            return { success: true, data: await page.cookies() };
         }
         catch (error)
         {
@@ -385,8 +390,8 @@ export default class Bot
             await page.goto("https://facebook.com/");
             await Bot.WaitRandom(page, 1200);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            callback?.call({ success: true, data: (await page.cookies()) });
+            return { success: true, data: (await page.cookies()) };
         } catch (error)
         {
 
@@ -395,10 +400,17 @@ export default class Bot
         }
     }
 
-    public static Logout = async ({ page = Bot.page, data: { email, callback } }: { page?: Page, data: IData }) => 
+    public static Logout = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) => 
     {
+        if (!Bot.loggedIn)        
+        {
+            callback?.call({ success: true, error: null, data: null });
+            return { success: true, error: null, data: null };
+        }
+
         try
         {
+            await page.goto("https://facebook.com");
             const cursor = createCursor(page);
             await cursor.click(selectors.account);
 
@@ -410,14 +422,36 @@ export default class Bot
 
             await cursor.click(selectors.logout);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
+            await page.close();
+            await Bot.browser.close();
+            Bot.loggedIn = false;
 
-            return { success: true, data: JSON.stringify(await page.cookies()) };
-        } catch (error)
+            callback?.call({ success: true, data: (await page.cookies()) });
+
+            return { success: true, data: (await page.cookies()) };
+        }
+        catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
+        }
+    }
+
+    public static CloseBrowser = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) =>
+    {
+        try
+        {
+            if (Bot.browser)
+                await Bot.browser.close();
+
+            callback?.call({ success: true, error: null, data: null });
+            return { success: true, error: null, data: null };
+        }
+        catch (e)
+        {
+            callback?.call({ success: true, error: e, data: null });
+            return { success: true, error: null, data: null };
         }
     }
 
@@ -461,9 +495,9 @@ export default class Bot
             await cursor.click(selectors.friendRespond);
             await Bot.WaitRandom(page, 1000);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
+            callback?.call({ success: true, data: (await page.cookies()) });
 
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            return { success: true, data: (await page.cookies()) };
         } catch (error)
         {
 
@@ -529,8 +563,8 @@ export default class Bot
                 }
             }
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            callback?.call({ success: true, data: (await page.cookies()) });
+            return { success: true, data: (await page.cookies()) };
         }
         catch (error)
         {
@@ -563,9 +597,9 @@ export default class Bot
 
             await Bot.WaitRandom(page, 3000);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
+            callback?.call({ success: true, data: (await page.cookies()) });
 
-            return { success: true, data: JSON.stringify(await page.cookies()) }
+            return { success: true, data: (await page.cookies()) }
         } catch (error)
         {
 
@@ -598,9 +632,9 @@ export default class Bot
 
             await Bot.WaitRandom(page, 3000);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
+            callback?.call({ success: true, data: (await page.cookies()) });
 
-            return { success: true, data: JSON.stringify(await page.cookies()) }
+            return { success: true, data: (await page.cookies()) }
         } catch (error)
         {
 
@@ -641,8 +675,8 @@ export default class Bot
             await Bot.WaitRandom(page, 1200);
 
             await cursor.click(selectors.sendFriendInvite);
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            callback?.call({ success: true, data: (await page.cookies()) });
+            return { success: true, data: (await page.cookies()) };
         } catch (error)
         {
             callback?.call({ success: false, error });
@@ -657,8 +691,8 @@ export default class Bot
             await page.goto(url!);
             await page.waitForSelector(selectors.search);
 
-            callback?.call({ success: true, data: JSON.stringify(await page.cookies()) });
-            return { success: true, data: JSON.stringify(await page.cookies()) };
+            callback?.call({ success: true, data: (await page.cookies()) });
+            return { success: true, data: (await page.cookies()) };
         } catch (error)
         {
 
@@ -807,9 +841,9 @@ export default class Bot
     private static async autoScrollFriendReq(page: Page)
     {
         const requests: { name: string, url: string }[] = []
-        if (await page.$(selectors.friendsReqGrid))
+        if (await page.$(selectors.friendsReqGrid) || await page.$("div[class='sxpk6l6v'] > div:last-child"))
         {
-            let length = await page.$eval(selectors.friendsReqGrid, (e) => e.children.length);
+            let length = await page.$eval("div[class='sxpk6l6v'] > div:last-child", (e) => e.children.length);
             if (length == 0) return requests;
 
             await new Promise<void>(async (resolve) => 
@@ -820,23 +854,31 @@ export default class Bot
                     await page.$eval(selectors.friendReqGridScroller2, (e) => e.scrollTop = Number.MAX_SAFE_INTEGER);
                     await page.$eval(selectors.friendReqGridScroller, (e) => e.scrollTop = Number.MAX_SAFE_INTEGER);
                     await Bot.WaitRandom(page, 3000);
+                    try
+                    {
+                        await page.waitForSelector(`div[class='sxpk6l6v'] > div:last-child > div:nth-child(${length + 1})`, { timeout: 3000 });
+                    }
+                    catch (_) { }
                     //get the number of items
-                    let len = await page.$eval(selectors.friendsReqGrid, (e) => e.children.length);
+                    // let len = await page.$eval(selectors.friendsReqGrid, (e) => e.children.length);
+                    let len = await page.$eval("div[class='sxpk6l6v'] > div:last-child", (e) => e.children.length);
 
-                    if (length <= len)
+                    if (len <= length)
                     {
                         clearInterval(timer);
                         resolve();
                         return;
                     }
                     length = len;
-                }, 4000);
+                }, 5000);
             });
+
 
             for (let i = 0; i < length; i++)
             {
                 //get all the names of the requests
-                const selector = `${selectors.friendsReqGrid} > div:nth-child(${i + 1}) > div > a`;
+                // const selector = `${selectors.friendsReqGrid} > div:nth-child(${i + 1}) > div > a`;
+                const selector = `div[class='sxpk6l6v'] > div:last-child > div:nth-child(${i + 1}) > div > a`;
                 const url: string = await page.evaluate((sel) => document.querySelector(sel).href, selector);
                 const textContent: string = await page.evaluate((sel) => document.querySelector(sel).textContent, selector);
                 let name = textContent.match(/\b[A-Z].*?\b/g)?.join(" ");
@@ -844,26 +886,34 @@ export default class Bot
                     name = "Unknown Language"
 
                 requests.push({ name, url });
+
             }
         }
         else
         {
-            let length = await page.$eval(selectors.friendRequestsWall, (e) => e.querySelectorAll("a[role='link']").length);
-            if (length == 1) return requests;
-
-            const container = await page.$(selectors.friendRequestsWall);
-            const reqs = await container?.$$("a[role='link']");
-            if (!reqs) return requests;
-            for (let i = 1; i < reqs.length; i++)
+            try
             {
-                const element = reqs[i];
-                const url: string = await element.evaluate((x) => (<HTMLAnchorElement>x).href);
-                const textContent: string = await element.evaluate((x) => x.textContent!);
-                let name = textContent.match(/\b[A-Z].*?\b/g)?.join(" ");
-                if (!name)
-                    name = "Unknown Language"
+                let length = await page.$eval(selectors.friendRequestsWall, (e) => e.querySelectorAll("a[role='link']").length);
+                if (length == 1) return requests;
 
-                requests.push({ name, url });
+                const container = await page.$(selectors.friendRequestsWall);
+                const reqs = await container?.$$("a[role='link']");
+                if (!reqs) return requests;
+                for (let i = 1; i < reqs.length; i++)
+                {
+                    const element = reqs[i];
+                    const url: string = await element.evaluate((x) => (<HTMLAnchorElement>x).href);
+                    const textContent: string = await element.evaluate((x) => x.textContent!);
+                    let name = textContent.match(/\b[A-Z].*?\b/g)?.join(" ");
+                    if (!name)
+                        name = "Unknown Language"
+
+                    requests.push({ name, url });
+                }
+            }
+            catch (_)
+            {
+                
             }
         }
 
