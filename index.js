@@ -9,7 +9,7 @@ const express = require('express')
 const app = express();
 const cors = require('cors');
 
-const { body, validationResult, header } = require("express-validator");
+const { body, validationResult, header, query } = require("express-validator");
 
 const port = 3030;
 
@@ -18,8 +18,8 @@ const port = 3030;
 app.use(express.json());
 app.use(cors());
 
-app.post("/register-code", [body("code").isNumeric()], async (req, res) => 
-{    
+app.get("/register-code", [query("code").isNumeric()], async (req, res) => 
+{
     const errors = validationResult(req);
     if (!errors.isEmpty())
     {
@@ -28,14 +28,14 @@ app.post("/register-code", [body("code").isNumeric()], async (req, res) =>
 
     const { success, error, data } = await Bot.RegisterCode({
         data: {
-            message: req.body.code
+            message: req.query.code
         }
     });
 
     return res.json({ success, error, data: data });
 })
 
-app.post("/register", [body("email").isEmail(), body("pass").isStrongPassword(), body("first_name").isString(), body("last_name").isString()], async (req, res) => 
+app.get("/register", [query("email").isEmail(), query("pass").isStrongPassword(), query("first_name").isString(), query("last_name").isString()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -46,7 +46,7 @@ app.post("/register", [body("email").isEmail(), body("pass").isStrongPassword(),
     await bot.setup(config.maxconcurrency);
     const { success, error, data } = await Bot.RegisterAccount({
         data: {
-            email: req.body.email, pass: req.body.pass, message: req.body.first_name.trim() + " " + req.body.last_name.trim()
+            email: req.query.email, pass: req.query.pass, message: req.query.first_name.trim() + " " + req.query.last_name.trim()
         }
     });
 
@@ -60,7 +60,7 @@ app.get("/current-user", (req, res) =>
     else res.status(404).json({ success: false, error: "User not logged in", data: null });
 });
 
-app.get("/login-cookie", [body("cookie").isJSON()], async (req, res) => 
+app.get("/login-cookie", [query("cookie").isJSON()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -71,14 +71,14 @@ app.get("/login-cookie", [body("cookie").isJSON()], async (req, res) =>
     await bot.setup(config.maxconcurrency);
     const { success, error, data } = await Bot.Login({
         data: {
-            cookies: JSON.parse(req.body.cookie)
+            cookies: JSON.parse(req.query.cookie)
         }
     });
 
     return res.json({ success, error, data });
 });
 
-app.get("/login", [body("email").isEmail(), body("password").isString()], async (req, res) => 
+app.get("/login", [query("email").isEmail(), query("password").isString()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -89,7 +89,7 @@ app.get("/login", [body("email").isEmail(), body("password").isString()], async 
     await bot.setup(config.maxconcurrency);
     const { success, error, data } = await Bot.Login({
         data: {
-            email: req.body.email, pass: req.body.password
+            email: req.query.email, pass: req.query.password
         }
     });
 
@@ -108,7 +108,7 @@ app.get("/home", async (req, res) =>
     res.json({ success, error, data });
 });
 
-app.post("/groups/join", [body("url").isURL()], async (req, res) => 
+app.get("/groups/join", [query("url").isURL()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -116,10 +116,10 @@ app.post("/groups/join", [body("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.JoinGroup({ data: { url: req.body.url } });
+    const { success, error, data } = await Bot.JoinGroup({ data: { url: req.query.url } });
     return res.json({ success, error, data });
 });
-app.post("/groups/leave", [body("url").isURL()], async (req, res) => 
+app.get("/groups/leave", [query("url").isURL()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -127,23 +127,11 @@ app.post("/groups/leave", [body("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.LeaveGroup({ data: { url: req.body.url } });
-    return res.json({ success, error, data });
-});
-
-app.post("/friend/message", [body("url").isURL(), body("message").isString()], async (req, res) =>
-{
-    const errors = validationResult(req);
-    if (!errors.isEmpty())
-    {
-        return res.status(400).json({ error: errors.array(), success: false, data: null });
-    }
-
-    const { success, error, data } = await Bot.FriendMessage({ data: { url: req.body.url, message: req.body.message } });
+    const { success, error, data } = await Bot.LeaveGroup({ data: { url: req.query.url } });
     return res.json({ success, error, data });
 });
 
-app.post("/friend/message/open", [body("url").isURL()], async (req, res) => 
+app.get("/friend/message", [query("url").isURL(), query("message").isString()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -151,11 +139,11 @@ app.post("/friend/message/open", [body("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.OpenMessageBox({ data: { url: req.body.url } });
+    const { success, error, data } = await Bot.FriendMessage({ data: { url: req.query.url, message: req.query.message } });
     return res.json({ success, error, data });
 });
 
-app.post("/groups/invite", [body("url").isURL(), body("friend_name").isString()], async (req, res) =>
+app.get("/friend/message/open", [query("url").isURL()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -163,11 +151,11 @@ app.post("/groups/invite", [body("url").isURL(), body("friend_name").isString()]
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.InviteFriendGroup({ data: { url: req.body.url, message: req.body.friend_name } });
+    const { success, error, data } = await Bot.OpenMessageBox({ data: { url: req.query.url } });
     return res.json({ success, error, data });
 });
 
-app.post("/groups/enter", [body("url").isURL()], async (req, res) => 
+app.get("/groups/invite", [query("url").isURL(), query("friend_name").isString()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -175,11 +163,11 @@ app.post("/groups/enter", [body("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.EnterGroup({ data: { url: req.body.url } });
+    const { success, error, data } = await Bot.InviteFriendGroup({ data: { url: req.query.url, message: req.query.friend_name } });
     return res.json({ success, error, data });
 });
 
-app.post("/wall", [body("message").isString()], async (req, res) =>
+app.get("/groups/enter", [query("url").isURL()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -187,11 +175,11 @@ app.post("/wall", [body("message").isString()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.PostOnWall({ data: { message: req.body.message } });
+    const { success, error, data } = await Bot.EnterGroup({ data: { url: req.query.url } });
     return res.json({ success, error, data });
 });
 
-app.post("/page", [body("message").isString(), body("url").isURL()], async (req, res) =>
+app.get("/wall", [query("message").isString()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -199,7 +187,19 @@ app.post("/page", [body("message").isString(), body("url").isURL()], async (req,
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.PostOnPage({ data: { message: req.body.message, url: req.body.url } });
+    const { success, error, data } = await Bot.PostOnWall({ data: { message: req.query.message } });
+    return res.json({ success, error, data });
+});
+
+app.get("/page", [query("message").isString(), query("url").isURL()], async (req, res) =>
+{
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+
+    const { success, error, data } = await Bot.PostOnPage({ data: { message: req.query.message, url: req.query.url } });
     return res.json({ success, error, data });
 });
 
@@ -209,7 +209,7 @@ app.get("/friend/available", async (req, res) =>
     return res.json({ success, error, data });
 });
 
-app.post("/friend/accept/all", async (req, res) =>
+app.get("/friend/accept/all", async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -221,7 +221,7 @@ app.post("/friend/accept/all", async (req, res) =>
     return res.json({ success, error, data });
 });
 
-app.post("/friend/accept", [body("friend").isURL()], async (req, res) =>
+app.get("/friend/accept", [query("friend").isURL()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -229,11 +229,11 @@ app.post("/friend/accept", [body("friend").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.AcceptReq({ data: { url: req.body.friend } });
+    const { success, error, data } = await Bot.AcceptReq({ data: { url: req.query.friend } });
     return res.json({ success, error, data });
 });
 
-app.get("/group/members", [body("url").isURL()], async (req, res) =>
+app.get("/group/members", [query("url").isURL()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -241,11 +241,11 @@ app.get("/group/members", [body("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.GetGroupMembers({ data: { url: req.body.url } });
+    const { success, error, data } = await Bot.GetGroupMembers({ data: { url: req.query.url } });
     return res.json({ success, error, data });
 });
 
-app.get("/groups/available", [body("keyword").isString()], async (req, res) =>
+app.get("/groups/available", [query("keyword").isString()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -253,7 +253,19 @@ app.get("/groups/available", [body("keyword").isString()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.GetAvailableGroups({ data: { message: req.body.keyword } });
+    const { success, error, data } = await Bot.GetAvailableGroups({ data: { message: req.query.keyword } });
+    return res.json({ success, error, data });
+});
+
+app.get("/logout", async (req, res) => 
+{
+    const { success, error, data } = await Bot.Logout({ data: {} });
+    return res.json({ success, error, data });
+});
+
+app.get("/close-browser", async (req, res) => 
+{
+    const { success, error, data } = await Bot.CloseBrowser({ data: {} });
     return res.json({ success, error, data });
 });
 

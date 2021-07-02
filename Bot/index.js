@@ -9,6 +9,7 @@ const puppeteer_extra_plugin_stealth_1 = __importDefault(require("puppeteer-extr
 const ghost_cursor_1 = require("ghost-cursor");
 const selectors_json_1 = __importDefault(require("./selectors/selectors.json"));
 const install_mouse_helper_1 = require("./extensions/install-mouse-helper");
+const config_json_1 = __importDefault(require("./config.json"));
 class Bot {
     constructor() {
         this.puppeteer = puppeteer_extra_1.addExtra(puppeteer_1.default);
@@ -28,13 +29,13 @@ class Bot {
         //     {
         //         console.error("\x1b[31m%s\x1b[0m", `Error crawling ${data}: ${err.message}`);
         //     });
-        const browser = await this.puppeteer.launch({
-            headless: false,
+        Bot.browser = await this.puppeteer.launch({
+            headless: config_json_1.default.headless,
             args: ['--no-sandbox']
         });
-        const context = browser.defaultBrowserContext();
+        const context = Bot.browser.defaultBrowserContext();
         context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
-        Bot.page = await browser.newPage();
+        Bot.page = await Bot.browser.newPage();
     }
     static GetCurrentUser() {
         try {
@@ -80,8 +81,8 @@ class Bot {
     static async autoScrollFriendReq(page) {
         var _a, _b;
         const requests = [];
-        if (await page.$(selectors_json_1.default.friendsReqGrid)) {
-            let length = await page.$eval(selectors_json_1.default.friendsReqGrid, (e) => e.children.length);
+        if (await page.$(selectors_json_1.default.friendsReqGrid) || await page.$("div[class='sxpk6l6v'] > div:last-child")) {
+            let length = await page.$eval("div[class='sxpk6l6v'] > div:last-child", (e) => e.children.length);
             if (length == 0)
                 return requests;
             await new Promise(async (resolve) => {
@@ -90,19 +91,25 @@ class Bot {
                     await page.$eval(selectors_json_1.default.friendReqGridScroller2, (e) => e.scrollTop = Number.MAX_SAFE_INTEGER);
                     await page.$eval(selectors_json_1.default.friendReqGridScroller, (e) => e.scrollTop = Number.MAX_SAFE_INTEGER);
                     await Bot.WaitRandom(page, 3000);
+                    try {
+                        await page.waitForSelector(`div[class='sxpk6l6v'] > div:last-child > div:nth-child(${length + 1})`, { timeout: 3000 });
+                    }
+                    catch (_) { }
                     //get the number of items
-                    let len = await page.$eval(selectors_json_1.default.friendsReqGrid, (e) => e.children.length);
-                    if (length <= len) {
+                    // let len = await page.$eval(selectors.friendsReqGrid, (e) => e.children.length);
+                    let len = await page.$eval("div[class='sxpk6l6v'] > div:last-child", (e) => e.children.length);
+                    if (len <= length) {
                         clearInterval(timer);
                         resolve();
                         return;
                     }
                     length = len;
-                }, 4000);
+                }, 5000);
             });
             for (let i = 0; i < length; i++) {
                 //get all the names of the requests
-                const selector = `${selectors_json_1.default.friendsReqGrid} > div:nth-child(${i + 1}) > div > a`;
+                // const selector = `${selectors.friendsReqGrid} > div:nth-child(${i + 1}) > div > a`;
+                const selector = `div[class='sxpk6l6v'] > div:last-child > div:nth-child(${i + 1}) > div > a`;
                 const url = await page.evaluate((sel) => document.querySelector(sel).href, selector);
                 const textContent = await page.evaluate((sel) => document.querySelector(sel).textContent, selector);
                 let name = (_a = textContent.match(/\b[A-Z].*?\b/g)) === null || _a === void 0 ? void 0 : _a.join(" ");
@@ -112,21 +119,25 @@ class Bot {
             }
         }
         else {
-            let length = await page.$eval(selectors_json_1.default.friendRequestsWall, (e) => e.querySelectorAll("a[role='link']").length);
-            if (length == 1)
-                return requests;
-            const container = await page.$(selectors_json_1.default.friendRequestsWall);
-            const reqs = await (container === null || container === void 0 ? void 0 : container.$$("a[role='link']"));
-            if (!reqs)
-                return requests;
-            for (let i = 1; i < reqs.length; i++) {
-                const element = reqs[i];
-                const url = await element.evaluate((x) => x.href);
-                const textContent = await element.evaluate((x) => x.textContent);
-                let name = (_b = textContent.match(/\b[A-Z].*?\b/g)) === null || _b === void 0 ? void 0 : _b.join(" ");
-                if (!name)
-                    name = "Unknown Language";
-                requests.push({ name, url });
+            try {
+                let length = await page.$eval(selectors_json_1.default.friendRequestsWall, (e) => e.querySelectorAll("a[role='link']").length);
+                if (length == 1)
+                    return requests;
+                const container = await page.$(selectors_json_1.default.friendRequestsWall);
+                const reqs = await (container === null || container === void 0 ? void 0 : container.$$("a[role='link']"));
+                if (!reqs)
+                    return requests;
+                for (let i = 1; i < reqs.length; i++) {
+                    const element = reqs[i];
+                    const url = await element.evaluate((x) => x.href);
+                    const textContent = await element.evaluate((x) => x.textContent);
+                    let name = (_b = textContent.match(/\b[A-Z].*?\b/g)) === null || _b === void 0 ? void 0 : _b.join(" ");
+                    if (!name)
+                        name = "Unknown Language";
+                    requests.push({ name, url });
+                }
+            }
+            catch (_) {
             }
         }
         return requests;
@@ -183,6 +194,7 @@ class Bot {
 }
 exports.default = Bot;
 Bot.accounts = new Map();
+Bot.loggedIn = false;
 Bot.RegisterCode = async ({ page = Bot.page, data: { message, callback } }) => {
     if (!message) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: "Please enter a valid code" });
@@ -196,8 +208,8 @@ Bot.RegisterCode = async ({ page = Bot.page, data: { message, callback } }) => {
         await Bot.WaitRandom(page, 1500);
         await cursor.click(selectors_json_1.default.continueCode);
         await Bot.WaitRandom(page, 3000);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: JSON.stringify(await page.cookies()) });
-        return { success: false, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: (await page.cookies()) });
+        return { success: false, data: (await page.cookies()) };
     }
     catch (error) {
         console.log(error);
@@ -250,9 +262,9 @@ Bot.RegisterAccount = async ({ page = Bot.page, data: { email, pass, message, ca
         await Bot.WaitRandom(page, 1000);
         await cursor.click(selectors_json_1.default.signUp);
         await Bot.WaitRandom(page, 4000);
-        Bot.accounts[email] = JSON.stringify(await page.cookies());
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: JSON.stringify(await page.cookies()) });
-        return { success: false, data: JSON.stringify(await page.cookies()) };
+        Bot.accounts[email] = (await page.cookies());
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: (await page.cookies()) });
+        return { success: false, data: (await page.cookies()) };
     }
     catch (error) {
         console.log(error);
@@ -278,8 +290,8 @@ Bot.JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }) => {
         }
         catch (_a) {
         }
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         console.log(error);
@@ -312,8 +324,8 @@ Bot.LeaveGroup = async ({ page = Bot.page, data: { url, email, callback } }) => 
         await Bot.WaitRandom(page, 2000);
         await cursor.click(selectors_json_1.default.confirmLeaveGroup);
         await Bot.WaitRandom(page, 3000);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -339,8 +351,8 @@ Bot.OpenMessageBox = async ({ page = Bot.page, data: { url, email, callback } })
         await Bot.WaitRandom(page, 1000);
         await cursor.click(selectors_json_1.default.profileMessage);
         await page.waitForSelector(selectors_json_1.default.messageInputBox);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -366,8 +378,8 @@ Bot.FriendMessage = async ({ page = Bot.page, data: { url, email, message, callb
         await cursor.click(selectors_json_1.default.messageInputBox);
         await page.keyboard.type(message, { delay: 350 });
         await page.keyboard.press(String.fromCharCode(13));
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -382,7 +394,7 @@ Bot.Login = async ({ page = Bot.page, data: { email, pass, cookies, callback } }
             await page.goto("https://facebook.com/");
         }
         else {
-            await page.goto("https://facebook.com/");
+            await page.goto("https://en-gb.facebook.com/");
             await page.waitForSelector(selectors_json_1.default.email);
             const cursor = ghost_cursor_1.createCursor(page);
             await install_mouse_helper_1.installMouseHelper(page);
@@ -396,9 +408,10 @@ Bot.Login = async ({ page = Bot.page, data: { email, pass, cookies, callback } }
             await cursor.click(selectors_json_1.default.login);
         }
         await page.waitForSelector(selectors_json_1.default.search);
-        Bot.accounts[email] = JSON.stringify(await page.cookies());
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        Bot.accounts[email] = await page.cookies();
+        Bot.loggedIn = true;
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: await page.cookies() });
+        return { success: true, data: await page.cookies() };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -409,28 +422,48 @@ Bot.Home = async ({ page = Bot.page, data: { callback } }) => {
     try {
         await page.goto("https://facebook.com/");
         await Bot.WaitRandom(page, 1200);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
         return { success: false, error };
     }
 };
-Bot.Logout = async ({ page = Bot.page, data: { email, callback } }) => {
+Bot.Logout = async ({ page = Bot.page, data: { callback } }) => {
+    if (!Bot.loggedIn) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, error: null, data: null });
+        return { success: true, error: null, data: null };
+    }
     try {
+        await page.goto("https://facebook.com");
         const cursor = ghost_cursor_1.createCursor(page);
         await cursor.click(selectors_json_1.default.account);
         await Bot.WaitRandom(page, 1000);
         await page.waitForSelector(selectors_json_1.default.logout);
         await Bot.WaitRandom(page, 1000);
         await cursor.click(selectors_json_1.default.logout);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        await page.close();
+        await Bot.browser.close();
+        Bot.loggedIn = false;
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
+    }
+};
+Bot.CloseBrowser = async ({ page = Bot.page, data: { callback } }) => {
+    try {
+        if (Bot.browser)
+            await Bot.browser.close();
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, error: null, data: null });
+        return { success: true, error: null, data: null };
+    }
+    catch (e) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, error: e, data: null });
+        return { success: true, error: null, data: null };
     }
 };
 Bot.ListOfGroups = async ({ page = Bot.page, data: { callback } }) => {
@@ -458,8 +491,8 @@ Bot.AcceptReq = async ({ page = Bot.page, data: { url, callback } }) => {
         await Bot.WaitRandom(page, 1000);
         await cursor.click(selectors_json_1.default.friendRespond);
         await Bot.WaitRandom(page, 1000);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -505,8 +538,8 @@ Bot.AcceptAllFriendReq = async ({ page = Bot.page, data: { callback } }) => {
                 cursor.click((await page.$$(selector))[i]);
             }
         }
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -528,8 +561,8 @@ Bot.PostOnPage = async ({ page = Bot.page, data: { message, url, callback } }) =
         await Bot.WaitRandom(page, 1000);
         await cursor.click(selectors_json_1.default.pagePostSubmit);
         await Bot.WaitRandom(page, 3000);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -551,8 +584,8 @@ Bot.PostOnWall = async ({ page = Bot.page, data: { message, callback } }) => {
         await Bot.WaitRandom(page, 1000);
         await cursor.click(selectors_json_1.default.pagePostSubmit);
         await Bot.WaitRandom(page, 3000);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -581,8 +614,8 @@ Bot.InviteFriendGroup = async ({ page = Bot.page, data: { url, message, callback
         await cursor.click(selectors_json_1.default.searchResultFriendInvite);
         await Bot.WaitRandom(page, 1200);
         await cursor.click(selectors_json_1.default.sendFriendInvite);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
@@ -593,8 +626,8 @@ Bot.EnterGroup = async ({ page = Bot.page, data: { url, callback } }) => {
     try {
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.search);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: JSON.stringify(await page.cookies()) });
-        return { success: true, data: JSON.stringify(await page.cookies()) };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
