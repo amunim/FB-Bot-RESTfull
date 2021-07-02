@@ -55,7 +55,7 @@ export default class Bot
 
         const browser = await this.puppeteer.launch(
             {
-                headless: false,
+                headless: true,
                 args: ['--no-sandbox']
             }
         );
