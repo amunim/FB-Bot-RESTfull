@@ -29,7 +29,7 @@ class Bot {
         //         console.error("\x1b[31m%s\x1b[0m", `Error crawling ${data}: ${err.message}`);
         //     });
         const browser = await this.puppeteer.launch({
-            headless: false,
+            headless: true,
             args: ['--no-sandbox']
         });
         const context = browser.defaultBrowserContext();
