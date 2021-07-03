@@ -15,7 +15,7 @@ class Bot {
         this.puppeteer = puppeteer_extra_1.addExtra(puppeteer_1.default);
         this.puppeteer.use(puppeteer_extra_plugin_stealth_1.default());
     }
-    async setup(maxConcurrency) {
+    async setup(maxConcurrency, proxy = "") {
         //     this.cluster = await Cluster.launch({
         //         puppeteer: this.puppeteer,
         //         maxConcurrency,
@@ -31,7 +31,10 @@ class Bot {
         //     });
         Bot.browser = await this.puppeteer.launch({
             headless: config_json_1.default.headless,
-            args: ['--no-sandbox']
+            args: [
+                '--no-sandbox',
+                `--proxy-server=${proxy}`
+            ]
         });
         const context = Bot.browser.defaultBrowserContext();
         context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
@@ -387,7 +390,7 @@ Bot.FriendMessage = async ({ page = Bot.page, data: { url, email, message, callb
     }
 };
 //returns cookies after logging in
-Bot.Login = async ({ page = Bot.page, data: { email, pass, cookies, callback } }) => {
+Bot.Login = async ({ page = Bot.page, data: { email, pass, cookies, message, callback } }) => {
     try {
         if (cookies) {
             await page.setCookie(...cookies);
