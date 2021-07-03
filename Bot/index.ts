@@ -40,7 +40,7 @@ export default class Bot
         this.puppeteer.use(Stealth());
     }
 
-    public async setup(maxConcurrency: number)
+    public async setup(maxConcurrency: number, proxy = "")
     {
         //     this.cluster = await Cluster.launch({
         //         puppeteer: this.puppeteer,
@@ -60,7 +60,11 @@ export default class Bot
         Bot.browser = await this.puppeteer.launch(
             {
                 headless: config.headless,
-                args: ['--no-sandbox']
+                args: 
+                [
+                    '--no-sandbox',
+                    `--proxy-server=${proxy}`
+                ]
             }
         );
         const context = Bot.browser.defaultBrowserContext();
@@ -338,7 +342,7 @@ export default class Bot
     }
 
     //returns cookies after logging in
-    public static Login = async ({ page = Bot.page, data: { email, pass, cookies, callback } }: { page?: Page, data: IData }) =>
+    public static Login = async ({ page = Bot.page, data: { email, pass, cookies, message, callback } }: { page?: Page, data: IData }) =>
     {
         try
         {

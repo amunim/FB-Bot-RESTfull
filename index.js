@@ -60,7 +60,7 @@ app.get("/current-user", (req, res) =>
     else res.status(404).json({ success: false, error: "User not logged in", data: null });
 });
 
-app.get("/login-cookie", [query("cookie").isJSON()], async (req, res) => 
+app.get("/login-cookie", [query("cookie").isJSON(), query("proxy").optional().isURL({ require_port: true, require_protocol: true })], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -68,7 +68,7 @@ app.get("/login-cookie", [query("cookie").isJSON()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    await bot.setup(config.maxconcurrency);
+    await bot.setup(config.maxconcurrency, req.query.proxy);
     const { success, error, data } = await Bot.Login({
         data: {
             cookies: JSON.parse(req.query.cookie)
@@ -78,7 +78,7 @@ app.get("/login-cookie", [query("cookie").isJSON()], async (req, res) =>
     return res.json({ success, error, data });
 });
 
-app.get("/login", [query("email").isEmail(), query("password").isString()], async (req, res) => 
+app.get("/login", [query("email").isEmail(), query("password").isString(), query("proxy").optional().isURL({ require_port: true, require_protocol: true })], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -86,7 +86,7 @@ app.get("/login", [query("email").isEmail(), query("password").isString()], asyn
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    await bot.setup(config.maxconcurrency);
+    await bot.setup(config.maxconcurrency, req.query.proxy);
     const { success, error, data } = await Bot.Login({
         data: {
             email: req.query.email, pass: req.query.password
