@@ -418,6 +418,7 @@ Bot.Login = async ({ page = Bot.page, data: { email, pass, cookies, message, cal
     }
     catch (error) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
+        Bot.CloseBrowser({ data: {} });
         return { success: false, error };
     }
 };

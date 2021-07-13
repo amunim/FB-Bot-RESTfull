@@ -68,6 +68,7 @@ app.get("/login-cookie", [query("cookie").isJSON(), query("proxy").optional().is
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
+    await Bot.CloseBrowser({ data: {} });
     await bot.setup(config.maxconcurrency, req.query.proxy);
     const { success, error, data } = await Bot.Login({
         data: {
@@ -86,6 +87,7 @@ app.get("/login", [query("email").isEmail(), query("password").isString(), query
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
+    await Bot.CloseBrowser({ data: {} });
     await bot.setup(config.maxconcurrency, req.query.proxy);
     const { success, error, data } = await Bot.Login({
         data: {
