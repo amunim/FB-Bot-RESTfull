@@ -60,11 +60,11 @@ export default class Bot
         Bot.browser = await this.puppeteer.launch(
             {
                 headless: config.headless,
-                args: 
-                [
-                    '--no-sandbox',
-                    `--proxy-server=${proxy}`
-                ]
+                args:
+                    [
+                        '--no-sandbox',
+                        `--proxy-server=${proxy}`
+                    ]
             }
         );
         const context = Bot.browser.defaultBrowserContext();
@@ -383,6 +383,7 @@ export default class Bot
         {
 
             callback?.call({ success: false, error });
+            Bot.CloseBrowser({ data: {} });
             return { success: false, error };
         }
     }
@@ -917,7 +918,7 @@ export default class Bot
             }
             catch (_)
             {
-                
+
             }
         }
 
