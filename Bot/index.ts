@@ -2,12 +2,18 @@ import vanillaPuppeteer, { Browser, Cookie, ElementHandle, Page } from "puppetee
 
 import { addExtra, PuppeteerExtra } from "puppeteer-extra";
 import Stealth from "puppeteer-extra-plugin-stealth";
+import Anonymize from "puppeteer-extra-plugin-anonymize-ua";
+
+import { Cluster } from "puppeteer-cluster";
+
+import useProxy from "puppeteer-page-proxy";
 
 import { createCursor } from "ghost-cursor";
 import selectors from "./selectors/selectors.json";
 
 import { installMouseHelper } from "./extensions/install-mouse-helper";
 import config from "./config.json";
+import { User } from "./user";
 export type Callback = (data?: ReturnData) => Promise<void>;
 export interface IData 
 {
@@ -16,6 +22,7 @@ export interface IData
     email?: string,
     pass?: string,
     message?: string,
+    proxy?: string,
     callback?: Callback,
 }
 export interface ReturnData
@@ -27,53 +34,55 @@ export interface ReturnData
 
 export default class Bot
 {
-    private static page: Page;
-    private static accounts = new Map<string, Cookie[]>();
-    private static browser: Browser;
-    private puppeteer: PuppeteerExtra;
+    // private static page: Page;
+    public static accounts: { [key: string]: User } = {};
+    // private static browser: Browser;
+    private static puppeteer: PuppeteerExtra;
+    public static cluster: Cluster;
 
     private static loggedIn: boolean = false;
 
     constructor()
     {
-        this.puppeteer = addExtra(vanillaPuppeteer);
-        this.puppeteer.use(Stealth());
+        Bot.puppeteer = addExtra(vanillaPuppeteer);
+        Bot.puppeteer.use(Stealth());
+        // this.puppeteer.use(Anonymize());
     }
 
-    public async setup(maxConcurrency: number, proxy = "")
+    public async setup(maxConcurrency: number)
     {
-        //     this.cluster = await Cluster.launch({
-        //         puppeteer: this.puppeteer,
-        //         maxConcurrency,
-        //         concurrency: Cluster.CONCURRENCY_BROWSER,
-        //         timeout: 2147483647,
-        //         puppeteerOptions: {
-        //             headless: false
-        //         }
-        //     });
-
-        //     this.cluster.on('taskerror', (err, data) =>
-        //     {
-        //         console.error("\x1b[31m%s\x1b[0m", `Error crawling ${data}: ${err.message}`);
-        //     });
-
-        Bot.browser = await this.puppeteer.launch(
-            {
+        Bot.cluster = await Cluster.launch({
+            puppeteer: Bot.puppeteer,
+            maxConcurrency,
+            concurrency: Cluster.CONCURRENCY_BROWSER,
+            timeout: 2147483647,
+            puppeteerOptions: {
                 headless: config.headless,
                 args:
                     [
-                        '--no-sandbox',
-                        `--proxy-server=${proxy}`
+                        '--no-sandbox'
                     ]
             }
-        );
-        const context = Bot.browser.defaultBrowserContext();
-        context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
+        });
 
-        Bot.page = await Bot.browser.newPage();
+        Bot.cluster.on('taskerror', (err, data) =>
+        {
+            console.error("\x1b[31m%s\x1b[0m", `Error crawling ${data}: ${err.message}`);
+        });
+
+        // Bot.browser = await this.puppeteer.launch(
+        //     {
+        //         headless: config.headless,
+        //         args:
+        //             [
+        //                 '--no-sandbox',
+        //                 `--proxy-server=${proxy}`
+        //             ]
+        //     }
+        // );
     }
 
-    public static RegisterCode = async ({ page = Bot.page, data: { message, callback } }: { page: Page, data: IData }) =>
+    public static RegisterCode = async ({ page, data: { email, message, callback } }: { page: Page, data: IData }) =>
     {
         if (!message)
         {
@@ -83,6 +92,13 @@ export default class Bot
 
         try
         {
+            const context = page.browser().defaultBrowserContext();
+            context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+
+            await page.setCookie(...Bot.accounts[email!].Cookies);
+            await page.goto(Bot.accounts[email!].RegisterUrl);
+
             await page.waitForSelector(selectors.fbCode);
 
             const cursor = createCursor(page);
@@ -95,6 +111,8 @@ export default class Bot
 
             await Bot.WaitRandom(page, 3000);
 
+            Bot.accounts[email!].RegisterUrl = "";
+
             callback?.call({ success: false, data: (await page.cookies()) });
             return { success: false, data: (await page.cookies()) };
         }
@@ -102,12 +120,12 @@ export default class Bot
         {
             console.log(error);
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static RegisterAccount = async ({ page = Bot.page, data: { email, pass, message, callback } }: { page?: Page, data: IData }) => 
+    public static RegisterAccount = async ({ page, data: { email, pass, message, proxy, callback } }: { page: Page, data: IData }) => 
     {
         if (!message)
         {
@@ -117,6 +135,10 @@ export default class Bot
 
         try
         {
+            useProxy(page, proxy!);
+            const context = page.browser().defaultBrowserContext();
+            context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
+
             await page.goto("https://en-gb.facebook.com/");
             const cursor = createCursor(page);
 
@@ -170,7 +192,8 @@ export default class Bot
 
             await Bot.WaitRandom(page, 4000);
 
-            Bot.accounts[email!] = (await page.cookies());
+            Bot.accounts[email!] = new User(await page.cookies(), await page.url(), proxy);
+
             callback?.call({ success: false, data: (await page.cookies()) });
             return { success: false, data: (await page.cookies()) };
         }
@@ -178,15 +201,17 @@ export default class Bot
         {
             console.log(error);
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }: { page?: Page, data: IData }) =>
+    public static JoinGroup = async ({ page, data: { url, email, callback } }: { page: Page, data: IData }) =>
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto(url!);
             await page.waitForSelector(selectors.joinGroup);
             await Bot.WaitRandom(page, 1000);
@@ -218,12 +243,12 @@ export default class Bot
         {
             console.log(error);
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static LeaveGroup = async ({ page = Bot.page, data: { url, email, callback } }: { page?: Page, data: IData }) =>
+    public static LeaveGroup = async ({ page, data: { url, email, callback } }: { page: Page, data: IData }) =>
     {
         // if (Bot.accounts.has(email!))
         // {
@@ -239,6 +264,8 @@ export default class Bot
 
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto(url!);
             await page.waitForSelector(selectors.more);
             await Bot.WaitRandom(page, 1000);
@@ -261,12 +288,12 @@ export default class Bot
         }
         catch (error)
         {
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static OpenMessageBox = async ({ page = Bot.page, data: { url, email, callback } }: { page?: Page, data: IData }) => 
+    public static OpenMessageBox = async ({ page, data: { url, email, callback } }: { page: Page, data: IData }) => 
     {
         // if (Bot.accounts.has(email!))
         // {
@@ -282,6 +309,8 @@ export default class Bot
 
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto(url!);
             await page.waitForSelector(selectors.profileMessage);
 
@@ -298,12 +327,12 @@ export default class Bot
         catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static FriendMessage = async ({ page = Bot.page, data: { url, email, message, callback } }: { page?: Page, data: IData }) => 
+    public static FriendMessage = async ({ page, data: { url, email, message, callback } }: { page: Page, data: IData }) => 
     {
         // if (Bot.accounts.has(email!))
         // {
@@ -319,6 +348,8 @@ export default class Bot
 
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await Bot.OpenMessageBox({ page, data: { url, email } });
 
             const cursor = createCursor(page);
@@ -336,16 +367,20 @@ export default class Bot
         catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
     //returns cookies after logging in
-    public static Login = async ({ page = Bot.page, data: { email, pass, cookies, message, callback } }: { page?: Page, data: IData }) =>
+    public static Login = async ({ page, data: { email, pass, cookies, proxy, message, callback } }: { page: Page, data: IData }) =>
     {
         try
         {
+            const context = page.browser().defaultBrowserContext();
+            context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
+            useProxy(page, proxy || "");
+
             if (cookies)
             {
                 await page.setCookie(...cookies);
@@ -372,8 +407,7 @@ export default class Bot
             }
             await page.waitForSelector(selectors.search);
 
-            Bot.accounts[email!] = await page.cookies();
-            Bot.loggedIn = true;
+            Bot.accounts[email!] = new User(await page.cookies(), undefined, proxy || "");
 
             callback?.call({ success: true, data: await page.cookies() });
 
@@ -381,17 +415,17 @@ export default class Bot
         }
         catch (error)
         {
-
-            callback?.call({ success: false, error });
-            Bot.CloseBrowser({ data: {} });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static Home = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) => 
+    public static Home = async ({ page, data: { email, callback } }: { page: Page, data: IData }) => 
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto("https://facebook.com/");
             await Bot.WaitRandom(page, 1200);
 
@@ -400,14 +434,36 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static Logout = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) => 
+    public static GetProfileURL = async ({ page, data: { email, callback } }: { page: Page, data: IData }) => 
     {
-        if (!Bot.loggedIn)        
+        try
+        {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
+            await page.goto("https://facebook.com/bookmarks");
+            await Bot.WaitRandom(page, 5000);
+
+            const url = await page.evaluate(() => (<HTMLAnchorElement>(document.querySelectorAll("a[role='link']"))[26]).href);
+
+            callback?.call({ success: true, data: url });
+            return { success: true, data: url };
+        }
+        catch (error)
+        {
+
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
+        }
+    }
+
+    public static Logout = async ({ page, data: { email, callback } }: { page: Page, data: IData }) => 
+    {
+        if (!Bot.accounts.hasOwnProperty(email!))
         {
             callback?.call({ success: true, error: null, data: null });
             return { success: true, error: null, data: null };
@@ -415,6 +471,8 @@ export default class Bot
 
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto("https://facebook.com");
             const cursor = createCursor(page);
             await cursor.click(selectors.account);
@@ -428,8 +486,8 @@ export default class Bot
             await cursor.click(selectors.logout);
 
             await page.close();
-            await Bot.browser.close();
-            Bot.loggedIn = false;
+            // Bot.loggedIn = false;
+            delete Bot.accounts[email!];
 
             callback?.call({ success: true, data: (await page.cookies()) });
 
@@ -443,12 +501,12 @@ export default class Bot
         }
     }
 
-    public static CloseBrowser = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) =>
+    public static CloseBrowser = async ({ page, data: { callback } }: { page: Page, data: IData }) =>
     {
         try
         {
-            if (Bot.browser)
-                await Bot.browser.close();
+            // if (Bot.browser)
+            //     await Bot.browser.close();
 
             callback?.call({ success: true, error: null, data: null });
             return { success: true, error: null, data: null };
@@ -460,10 +518,13 @@ export default class Bot
         }
     }
 
-    public static ListOfGroups = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) =>
+    public static ListOfGroups = async ({ page, data: { email, callback } }: { page: Page, data: IData }) =>
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
+
             await page.goto("https://www.facebook.com/groups/feed/");
             await page.waitForSelector(selectors.search);
 
@@ -478,15 +539,17 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static AcceptReq = async ({ page = Bot.page, data: { url, callback } }: { page?: Page, data: IData }) => 
+    public static AcceptReq = async ({ page, data: { email, url, callback } }: { page: Page, data: IData }) => 
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...(Bot.accounts[email!].Cookies));
             await page.goto(url!);
             await page.waitForSelector(selectors.friendRespond);
 
@@ -506,15 +569,17 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static GetAllFriendReq = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) =>
+    public static GetAllFriendReq = async ({ page, data: { email, callback } }: { page: Page, data: IData }) =>
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto("https://www.facebook.com/friends/requests");
             await page.waitForSelector(selectors.search);
             let error;
@@ -537,16 +602,50 @@ export default class Bot
         catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static AcceptAllFriendReq = async ({ page = Bot.page, data: { callback } }: { page?: Page, data: IData }) => 
+    public static AcceptFriendReq = async ({ page, data: { email, url, callback } }: { page: Page, data: IData }) =>
     {
         try
         {
-            const { data } = await Bot.GetAllFriendReq({ data: { callback: undefined } }) || {};
+            if (Bot.accounts[email!].Proxy)
+                useProxy(page, "");
+            
+            await page.setCookie(...Bot.accounts[email!].Cookies);
+            await page.goto(url!);
+            await Bot.WaitRandom(page, 3000);
+            const cursor = createCursor(page);
+
+            await page.waitForSelector(selectors.respond);
+            await cursor.click(selectors.respond);
+
+            await Bot.WaitRandom(page, 2000);
+            await cursor.click(selectors.confirmRequest);
+
+            await Bot.WaitRandom(page, 1000);
+
+            await page.goto("https://facebook.com/");
+
+            callback?.call({ success: true, data: await page.cookies() });
+            return { success: true, data: await page.cookies() };            
+        }
+        catch (error)
+        {
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
+        }
+    }
+
+    public static AcceptAllFriendReq = async ({ page, data: { email, callback } }: { page: Page, data: IData }) => 
+    {
+        try
+        {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
+            const { data } = await Bot.GetAllFriendReq({ page, data: { callback: undefined } }) || {};
             const cursor = createCursor(page);
 
             if (!data)
@@ -573,15 +672,17 @@ export default class Bot
         }
         catch (error)
         {
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static PostOnPage = async ({ page = Bot.page, data: { message, url, callback } }: { page?: Page, data: IData }) => 
+    public static PostOnPage = async ({ page, data: { email, message, url, callback } }: { page: Page, data: IData }) => 
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto(url!);
             await page.waitForSelector(selectors.pageCreatePost);
 
@@ -608,15 +709,17 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static PostOnWall = async ({ page = Bot.page, data: { message, callback } }: { page?: Page, data: IData }) => 
+    public static PostOnWall = async ({ page, data: { email, message, callback } }: { page: Page, data: IData }) => 
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto("https://facebook.com/");
             await page.waitForSelector(selectors.postWall);
 
@@ -643,15 +746,17 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static InviteFriendGroup = async ({ page = Bot.page, data: { url, message, callback } }: { page?: Page, data: IData }) => 
+    public static InviteFriendGroup = async ({ page, data: { email, url, message, callback } }: { page: Page, data: IData }) => 
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.setViewport({ width: 523, height: 674 });
             await page.goto(url!);
             await page.waitForSelector(selectors.inviteFriendGroup);
@@ -684,15 +789,17 @@ export default class Bot
             return { success: true, data: (await page.cookies()) };
         } catch (error)
         {
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static EnterGroup = async ({ page = Bot.page, data: { url, callback } }: { page?: Page, data: IData }) =>
+    public static EnterGroup = async ({ page, data: { email, url, callback } }: { page: Page, data: IData }) =>
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto(url!);
             await page.waitForSelector(selectors.search);
 
@@ -701,15 +808,17 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static GetGroupMembers = async ({ page = Bot.page, data: { url, callback } }: { page?: Page, data: IData }) => 
+    public static GetGroupMembers = async ({ page, data: { email, url, callback } }: { page: Page, data: IData }) => 
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto(url!);
             await page.waitForSelector(selectors.membersButton);
 
@@ -743,22 +852,24 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static GetAvailableGroups = async ({ page = Bot.page, data: { message, callback } }: { page?: Page, data: IData }) =>
+    public static GetAvailableGroups = async ({ page, data: { email, message, callback } }: { page: Page, data: IData }) =>
     {
         try
         {
+            useProxy(page, Bot.accounts[email!].Proxy || "");
+            await page.setCookie(...Bot.accounts[email!].Cookies);
             await page.goto(`https://www.facebook.com/search/groups/?q=${message}`);
             await page.waitForSelector(selectors.search);
 
             await Bot.WaitRandom(page, 5000);
 
             const length = await Bot.autoScrollFeed(page);
-            const groups: { name: string, url: string }[] = [];
+            const groups: { name: string, url: string, data: string }[] = [];
             for (let i = 0; i < length; i++)
             {
                 try
@@ -767,8 +878,9 @@ export default class Bot
                     const el = await page.$(selector);
                     const href = await el?.evaluate((e) => (e.querySelectorAll("a")[1]).href);
                     const name = await el?.evaluate((e) => (e.querySelectorAll("a")[1]).textContent);
+                    const data = await el?.evaluate((e) => (e.querySelectorAll("span[dir='auto']")[1].firstChild!).textContent);
 
-                    groups.push({ name: name!, url: href! });
+                    groups.push({ name: name!, url: href!, data: data! });
                 }
                 catch { }
             }
@@ -778,21 +890,14 @@ export default class Bot
         } catch (error)
         {
 
-            callback?.call({ success: false, error });
-            return { success: false, error };
+            callback?.call({ success: false, error: error });
+            return { success: false, error: error };
         }
     }
 
-    public static GetCurrentUser(): string
+    public static GetCurrentUsers()
     {
-        try
-        {
-            return this.accounts.keys().next().value;
-        }
-        catch
-        {
-            return "";
-        }
+        return { success: true, data: Bot.accounts };
     }
 
     private static async WaitRandom(page: Page, waitTime: number)
