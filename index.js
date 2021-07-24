@@ -18,7 +18,7 @@ const port = 3030;
 app.use(express.json());
 app.use(cors());
 
-app.get("/register-code", [query("code").isNumeric()], async (req, res) => 
+app.get("/register-code", [query("code").isNumeric(), query("email").isEmail()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -26,11 +26,18 @@ app.get("/register-code", [query("code").isNumeric()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.RegisterCode({
-        data: {
-            message: req.query.code
-        }
-    });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ message: req.query.code, email: req.query.email }, Bot.RegisterCode);
+
+    //  = await Bot.RegisterCode({
+    //     data: {
+    //         message: req.query.code
+    //     }
+    // });
 
     return res.json({ success, error, data: data });
 })
@@ -55,12 +62,12 @@ app.get("/register", [query("email").isEmail(), query("pass").isStrongPassword()
 
 app.get("/current-user", (req, res) => 
 {
-    const user = Bot.GetCurrentUser();
+    const user = Bot.GetCurrentUsers();
     if (user) res.json({ success: true, error: "false", data: user });
     else res.status(404).json({ success: false, error: "User not logged in", data: null });
 });
 
-app.get("/login-cookie", [query("cookie").isJSON(), query("proxy").optional().isURL({ require_port: true, require_protocol: true })], async (req, res) => 
+app.get("/login-cookie", [query("cookie").isJSON(), query("email").isEmail(), query("proxy").optional()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -68,18 +75,15 @@ app.get("/login-cookie", [query("cookie").isJSON(), query("proxy").optional().is
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    await Bot.CloseBrowser({ data: {} });
-    await bot.setup(config.maxconcurrency, req.query.proxy);
-    const { success, error, data } = await Bot.Login({
-        data: {
-            cookies: JSON.parse(req.query.cookie)
-        }
-    });
+    const { success, error, data } = await Bot.cluster.execute({
+        cookies: JSON.parse(req.query.cookie),
+        email: req.query.email
+    }, Bot.Login);
 
     return res.json({ success, error, data });
 });
 
-app.get("/login", [query("email").isEmail(), query("password").isString(), query("proxy").optional().isURL({ require_port: true, require_protocol: true })], async (req, res) => 
+app.get("/login", [query("email").isEmail(), query("password").isString(), query("proxy").optional()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -87,30 +91,14 @@ app.get("/login", [query("email").isEmail(), query("password").isString(), query
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    await Bot.CloseBrowser({ data: {} });
-    await bot.setup(config.maxconcurrency, req.query.proxy);
-    const { success, error, data } = await Bot.Login({
-        data: {
-            email: req.query.email, pass: req.query.password
-        }
-    });
+    const { success, error, data } = await Bot.cluster.execute({
+        email: req.query.email, pass: req.query.password
+    }, Bot.Login);
 
     return res.json({ success, error, data: data })
 });
 
-app.get("/groups", async (req, res) => 
-{
-    const { success, error, data } = await Bot.ListOfGroups({ data: {} });
-    return res.json({ success, error, data });
-});
-
-app.get("/home", async (req, res) =>
-{
-    const { success, error, data } = await Bot.Home({ data: {} });
-    res.json({ success, error, data });
-});
-
-app.get("/groups/join", [query("url").isURL()], async (req, res) => 
+app.get("/groups", [query("email").isEmail()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -118,10 +106,16 @@ app.get("/groups/join", [query("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.JoinGroup({ data: { url: req.query.url } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ email: req.query.email }, Bot.ListOfGroups);
     return res.json({ success, error, data });
 });
-app.get("/groups/leave", [query("url").isURL()], async (req, res) => 
+
+app.get("/home", [query("email").isEmail()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -129,11 +123,16 @@ app.get("/groups/leave", [query("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.LeaveGroup({ data: { url: req.query.url } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ email: req.query.email }, Bot.Home);
     return res.json({ success, error, data });
 });
 
-app.get("/friend/message", [query("url").isURL(), query("message").isString()], async (req, res) =>
+app.get("/groups/join", [query("url").isURL(), query("email").isEmail()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -141,11 +140,15 @@ app.get("/friend/message", [query("url").isURL(), query("message").isString()], 
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.FriendMessage({ data: { url: req.query.url, message: req.query.message } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.url, email: req.query.email }, Bot.JoinGroup);
     return res.json({ success, error, data });
 });
-
-app.get("/friend/message/open", [query("url").isURL()], async (req, res) => 
+app.get("/groups/leave", [query("url").isURL(), query("email").isEmail()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -153,11 +156,16 @@ app.get("/friend/message/open", [query("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.OpenMessageBox({ data: { url: req.query.url } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.url, email: req.query.email }, Bot.LeaveGroup);
     return res.json({ success, error, data });
 });
 
-app.get("/groups/invite", [query("url").isURL(), query("friend_name").isString()], async (req, res) =>
+app.get("/friend/message", [query("url").isURL(), query("message").isString(), query("email").isEmail()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -165,11 +173,16 @@ app.get("/groups/invite", [query("url").isURL(), query("friend_name").isString()
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.InviteFriendGroup({ data: { url: req.query.url, message: req.query.friend_name } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.url, message: req.query.message, email: req.query.email }, Bot.FriendMessage);
     return res.json({ success, error, data });
 });
 
-app.get("/groups/enter", [query("url").isURL()], async (req, res) => 
+app.get("/friend/message/open", [query("url").isURL(), query("email").isEmail()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -177,11 +190,16 @@ app.get("/groups/enter", [query("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.EnterGroup({ data: { url: req.query.url } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.url, email: req.query.email }, Bot.OpenMessageBox);
     return res.json({ success, error, data });
 });
 
-app.get("/wall", [query("message").isString()], async (req, res) =>
+app.get("/groups/invite", [query("url").isURL(), query("friend_name").isString(), query("email").isEmail()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -189,11 +207,15 @@ app.get("/wall", [query("message").isString()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.PostOnWall({ data: { message: req.query.message } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.url, message: req.query.friend_name, email: req.query.email }, Bot.InviteFriendGroup);
     return res.json({ success, error, data });
 });
 
-app.get("/page", [query("message").isString(), query("url").isURL()], async (req, res) =>
+app.get("/groups/enter", [query("url").isURL(), query("email").isEmail()], async (req, res) => 
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -201,17 +223,15 @@ app.get("/page", [query("message").isString(), query("url").isURL()], async (req
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.PostOnPage({ data: { message: req.query.message, url: req.query.url } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.url, email: req.query.email }, Bot.EnterGroup);
     return res.json({ success, error, data });
 });
 
-app.get("/friend/available", async (req, res) =>
-{
-    const { success, error, data } = await Bot.GetAllFriendReq({ data: {} });
-    return res.json({ success, error, data });
-});
-
-app.get("/friend/accept/all", async (req, res) =>
+app.get("/wall", [query("message").isString(), query("email").isEmail()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -219,11 +239,15 @@ app.get("/friend/accept/all", async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.AcceptAllFriendReq({ data: {} });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ message: req.query.message, email: req.query.email }, Bot.PostOnWall);
     return res.json({ success, error, data });
 });
 
-app.get("/friend/accept", [query("friend").isURL()], async (req, res) =>
+app.get("/page", [query("message").isString(), query("url").isURL(), query("email").isEmail()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -231,11 +255,26 @@ app.get("/friend/accept", [query("friend").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.AcceptReq({ data: { url: req.query.friend } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ message: req.query.message, url: req.query.url, email: req.query.email }, Bot.PostOnPage);
     return res.json({ success, error, data });
 });
 
-app.get("/group/members", [query("url").isURL()], async (req, res) =>
+app.get("/friend/available", [query("email").isEmail()], async (req, res) =>
+{
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ email: req.query.email }, Bot.GetAllFriendReq);
+    return res.json({ success, error, data });
+});
+
+app.get("/friend/accept/all", [query("email").isEmail()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -243,11 +282,15 @@ app.get("/group/members", [query("url").isURL()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.GetGroupMembers({ data: { url: req.query.url } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ email: req.query.email }, Bot.AcceptAllFriendReq);
     return res.json({ success, error, data });
 });
 
-app.get("/groups/available", [query("keyword").isString()], async (req, res) =>
+app.get("/friend/accept", [query("friend").isURL(), query("email").isEmail()], async (req, res) =>
 {
     const errors = validationResult(req);
     if (!errors.isEmpty())
@@ -255,101 +298,176 @@ app.get("/groups/available", [query("keyword").isString()], async (req, res) =>
         return res.status(400).json({ error: errors.array(), success: false, data: null });
     }
 
-    const { success, error, data } = await Bot.GetAvailableGroups({ data: { message: req.query.keyword } });
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.friend, email: req.query.email }, Bot.AcceptFriendReq);
     return res.json({ success, error, data });
 });
 
-app.get("/logout", async (req, res) => 
+app.get("/group/members", [query("url").isURL(), query("email").isEmail()], async (req, res) =>
 {
-    const { success, error, data } = await Bot.Logout({ data: {} });
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ url: req.query.url, email: req.query.email }, Bot.GetGroupMembers);
     return res.json({ success, error, data });
 });
 
-app.get("/close-browser", async (req, res) => 
+app.get("/groups/available", [query("keyword").isString(), query("email").isEmail()], async (req, res) =>
 {
-    const { success, error, data } = await Bot.CloseBrowser({ data: {} });
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ message: req.query.keyword, email: req.query.email }, Bot.GetAvailableGroups);
     return res.json({ success, error, data });
 });
 
-async function main()
+app.get("/logout", [query("email").isEmail()], async (req, res) => 
+{
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ email: req.query.email }, Bot.Logout);
+    return res.json({ success, error, data });
+});
+
+app.get("/close-browser", [query("email").isEmail()], async (req, res) => 
+{
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ email: req.query.email }, Bot.CloseBrowser);
+    return res.json({ success, error, data });
+});
+
+app.get("/profile-url", [query("email").isEmail()], async (req, res) => 
+{
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+    {
+        return res.status(400).json({ error: errors.array(), success: false, data: null });
+    }
+    if (!Bot.accounts.hasOwnProperty(req.query.email))
+    {
+        return res.json({ success: false, error: "account not present in registry please check email" });
+    }
+    const { success, error, data } = await Bot.cluster.execute({ email: req.query.email }, Bot.GetProfileURL);
+    return res.json({ success, error, data });
+});
+
+// async function main()
+// {
+//     await bot.setup(config.maxconcurrency);
+
+//     await LoginTest();
+//     // await ListOfFriendReqTest();
+//     // await PostOnPage();
+//     // await PostWall();
+//     console.log("All done :)");
+// }
+
+// async function LoginTest()
+// {
+//     try
+//     {
+//         const cookieString = await fs.readFile("./cookies.json");
+//         const cookies = JSON.parse(cookieString);
+
+//         await Bot.Login({
+//             data: {
+//                 cookies
+//             }
+//         });
+//     }
+//     catch (e)
+//     {
+//         console.log("cookies not Found: ", e);
+//         const { success, error, data } = await Bot.Login({
+//             data: {
+//                 email: "email", pass: "pass"
+//             }
+//         });
+
+//         await fs.writeFile('./cookies.json', JSON.stringify(data, null, 2));
+//     }
+// }
+
+// async function MessageTest()
+// {
+//     const { success, error, data } = await Bot.FriendMessage({
+//         data: {
+//             url: "https://www.facebook.com/profile.php?id=100006633826957",
+//             email: "abdulmunim2002@gmail.com",
+//             message: "theek yr bs tum sunao, youtube kesa chal raha he tumhara",
+//         }
+//     });
+// }
+
+// async function JoinGroupTest()
+// {
+//     await Bot.JoinGroup({ data: { url: "https://www.facebook.com/groups/1413627525454761" } });
+// }
+
+// async function LeaveGroupTest()
+// {
+//     await Bot.LeaveGroup({ data: { url: "https://www.facebook.com/groups/1413627525454761" } });
+// }
+
+// async function ListOfGroupsTest()
+// {
+//     const { success, error, data } = await Bot.ListOfGroups({ data: {} });
+//     // console.log(JSON.stringify(data, null, 2));
+//     console.log(data);
+// }
+
+// async function ListOfFriendReqTest()
+// {
+//     const { success, error, data } = await Bot.GetAllFriendReq({ data: {} });
+//     console.log(data);
+// }
+
+// async function PostOnPage()
+// {
+//     const { success, error, data } = Bot.PostOnPage({ data: { message: "2nd Post :)", url: "https://www.facebook.com/Amunim-104696308448191" } });
+// }
+
+// async function PostWall()
+// {
+//     const { success, error, data } = await Bot.PostOnWall({ data: { message: "bdsaij" } });
+// }
+
+async function Start()
 {
     await bot.setup(config.maxconcurrency);
-
-    await LoginTest();
-    // await ListOfFriendReqTest();
-    // await PostOnPage();
-    // await PostWall();
-    console.log("All done :)");
 }
 
-async function LoginTest()
-{
-    try
-    {
-        const cookieString = await fs.readFile("./cookies.json");
-        const cookies = JSON.parse(cookieString);
-
-        await Bot.Login({
-            data: {
-                cookies
-            }
-        });
-    }
-    catch (e)
-    {
-        console.log("cookies not Found: ", e);
-        const { success, error, data } = await Bot.Login({
-            data: {
-                email: "email", pass: "pass"
-            }
-        });
-
-        await fs.writeFile('./cookies.json', JSON.stringify(data, null, 2));
-    }
-}
-
-async function MessageTest()
-{
-    const { success, error, data } = await Bot.FriendMessage({
-        data: {
-            url: "https://www.facebook.com/profile.php?id=100006633826957",
-            email: "abdulmunim2002@gmail.com",
-            message: "theek yr bs tum sunao, youtube kesa chal raha he tumhara",
-        }
-    });
-}
-
-async function JoinGroupTest()
-{
-    await Bot.JoinGroup({ data: { url: "https://www.facebook.com/groups/1413627525454761" } });
-}
-
-async function LeaveGroupTest()
-{
-    await Bot.LeaveGroup({ data: { url: "https://www.facebook.com/groups/1413627525454761" } });
-}
-
-async function ListOfGroupsTest()
-{
-    const { success, error, data } = await Bot.ListOfGroups({ data: {} });
-    // console.log(JSON.stringify(data, null, 2));
-    console.log(data);
-}
-
-async function ListOfFriendReqTest()
-{
-    const { success, error, data } = await Bot.GetAllFriendReq({ data: {} });
-    console.log(data);
-}
-
-async function PostOnPage()
-{
-    const { success, error, data } = Bot.PostOnPage({ data: { message: "2nd Post :)", url: "https://www.facebook.com/Amunim-104696308448191" } });
-}
-
-async function PostWall()
-{
-    const { success, error, data } = await Bot.PostOnWall({ data: { message: "bdsaij" } });
-}
-
-app.listen(port, () => console.log(`Listening on port:${port}`));
+Start().then(() => app.listen(port, () => console.log(`Listening on port:${port}`)));

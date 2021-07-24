@@ -6,47 +6,48 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const puppeteer_1 = __importDefault(require("puppeteer"));
 const puppeteer_extra_1 = require("puppeteer-extra");
 const puppeteer_extra_plugin_stealth_1 = __importDefault(require("puppeteer-extra-plugin-stealth"));
+const puppeteer_cluster_1 = require("puppeteer-cluster");
+const puppeteer_page_proxy_1 = __importDefault(require("puppeteer-page-proxy"));
 const ghost_cursor_1 = require("ghost-cursor");
 const selectors_json_1 = __importDefault(require("./selectors/selectors.json"));
 const install_mouse_helper_1 = require("./extensions/install-mouse-helper");
 const config_json_1 = __importDefault(require("./config.json"));
+const user_1 = require("./user");
 class Bot {
     constructor() {
-        this.puppeteer = puppeteer_extra_1.addExtra(puppeteer_1.default);
-        this.puppeteer.use(puppeteer_extra_plugin_stealth_1.default());
+        Bot.puppeteer = puppeteer_extra_1.addExtra(puppeteer_1.default);
+        Bot.puppeteer.use(puppeteer_extra_plugin_stealth_1.default());
+        // this.puppeteer.use(Anonymize());
     }
-    async setup(maxConcurrency, proxy = "") {
-        //     this.cluster = await Cluster.launch({
-        //         puppeteer: this.puppeteer,
-        //         maxConcurrency,
-        //         concurrency: Cluster.CONCURRENCY_BROWSER,
-        //         timeout: 2147483647,
-        //         puppeteerOptions: {
-        //             headless: false
-        //         }
-        //     });
-        //     this.cluster.on('taskerror', (err, data) =>
-        //     {
-        //         console.error("\x1b[31m%s\x1b[0m", `Error crawling ${data}: ${err.message}`);
-        //     });
-        Bot.browser = await this.puppeteer.launch({
-            headless: config_json_1.default.headless,
-            args: [
-                '--no-sandbox',
-                `--proxy-server=${proxy}`
-            ]
+    async setup(maxConcurrency) {
+        Bot.cluster = await puppeteer_cluster_1.Cluster.launch({
+            puppeteer: Bot.puppeteer,
+            maxConcurrency,
+            concurrency: puppeteer_cluster_1.Cluster.CONCURRENCY_BROWSER,
+            timeout: 2147483647,
+            puppeteerOptions: {
+                headless: config_json_1.default.headless,
+                args: [
+                    '--no-sandbox'
+                ]
+            }
         });
-        const context = Bot.browser.defaultBrowserContext();
-        context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
-        Bot.page = await Bot.browser.newPage();
+        Bot.cluster.on('taskerror', (err, data) => {
+            console.error("\x1b[31m%s\x1b[0m", `Error crawling ${data}: ${err.message}`);
+        });
+        // Bot.browser = await this.puppeteer.launch(
+        //     {
+        //         headless: config.headless,
+        //         args:
+        //             [
+        //                 '--no-sandbox',
+        //                 `--proxy-server=${proxy}`
+        //             ]
+        //     }
+        // );
     }
-    static GetCurrentUser() {
-        try {
-            return this.accounts.keys().next().value;
-        }
-        catch (_a) {
-            return "";
-        }
+    static GetCurrentUsers() {
+        return { success: true, data: Bot.accounts };
     }
     static async WaitRandom(page, waitTime) {
         await page.waitForTimeout(waitTime + Math.random() * 1000);
@@ -196,14 +197,20 @@ class Bot {
     }
 }
 exports.default = Bot;
-Bot.accounts = new Map();
+// private static page: Page;
+Bot.accounts = {};
 Bot.loggedIn = false;
-Bot.RegisterCode = async ({ page = Bot.page, data: { message, callback } }) => {
+Bot.RegisterCode = async ({ page, data: { email, message, callback } }) => {
     if (!message) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: "Please enter a valid code" });
         return { success: false, error: "Please enter a valid code" };
     }
     try {
+        const context = page.browser().defaultBrowserContext();
+        context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
+        await page.goto(Bot.accounts[email].RegisterUrl);
         await page.waitForSelector(selectors_json_1.default.fbCode);
         const cursor = ghost_cursor_1.createCursor(page);
         await cursor.click(selectors_json_1.default.fbCode);
@@ -211,21 +218,25 @@ Bot.RegisterCode = async ({ page = Bot.page, data: { message, callback } }) => {
         await Bot.WaitRandom(page, 1500);
         await cursor.click(selectors_json_1.default.continueCode);
         await Bot.WaitRandom(page, 3000);
+        Bot.accounts[email].RegisterUrl = "";
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: (await page.cookies()) });
         return { success: false, data: (await page.cookies()) };
     }
     catch (error) {
         console.log(error);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.RegisterAccount = async ({ page = Bot.page, data: { email, pass, message, callback } }) => {
+Bot.RegisterAccount = async ({ page, data: { email, pass, message, proxy, callback } }) => {
     if (!message) {
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: "Please give first name and last name in 'message'" });
         return { success: false, error: "Please give first name and last name in 'message'" };
     }
     try {
+        puppeteer_page_proxy_1.default(page, proxy);
+        const context = page.browser().defaultBrowserContext();
+        context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
         await page.goto("https://en-gb.facebook.com/");
         const cursor = ghost_cursor_1.createCursor(page);
         await cursor.click(selectors_json_1.default.createNewAccount);
@@ -265,18 +276,20 @@ Bot.RegisterAccount = async ({ page = Bot.page, data: { email, pass, message, ca
         await Bot.WaitRandom(page, 1000);
         await cursor.click(selectors_json_1.default.signUp);
         await Bot.WaitRandom(page, 4000);
-        Bot.accounts[email] = (await page.cookies());
+        Bot.accounts[email] = new user_1.User(await page.cookies(), await page.url(), proxy);
         callback === null || callback === void 0 ? void 0 : callback.call({ success: false, data: (await page.cookies()) });
         return { success: false, data: (await page.cookies()) };
     }
     catch (error) {
         console.log(error);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }) => {
+Bot.JoinGroup = async ({ page, data: { url, email, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.joinGroup);
         await Bot.WaitRandom(page, 1000);
@@ -298,11 +311,11 @@ Bot.JoinGroup = async ({ page = Bot.page, data: { url, email, callback } }) => {
     }
     catch (error) {
         console.log(error);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.LeaveGroup = async ({ page = Bot.page, data: { url, email, callback } }) => {
+Bot.LeaveGroup = async ({ page, data: { url, email, callback } }) => {
     // if (Bot.accounts.has(email!))
     // {
     //     // await Bot.Login({ page, data: { cookies: Bot.accounts[email!] } });
@@ -315,6 +328,8 @@ Bot.LeaveGroup = async ({ page = Bot.page, data: { url, email, callback } }) => 
     //     return;
     // }
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.more);
         await Bot.WaitRandom(page, 1000);
@@ -331,11 +346,11 @@ Bot.LeaveGroup = async ({ page = Bot.page, data: { url, email, callback } }) => 
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.OpenMessageBox = async ({ page = Bot.page, data: { url, email, callback } }) => {
+Bot.OpenMessageBox = async ({ page, data: { url, email, callback } }) => {
     // if (Bot.accounts.has(email!))
     // {
     //     // await Bot.Login({ page, data: { cookies: Bot.accounts[email!] } });
@@ -348,6 +363,8 @@ Bot.OpenMessageBox = async ({ page = Bot.page, data: { url, email, callback } })
     //     return;
     // }
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.profileMessage);
         const cursor = ghost_cursor_1.createCursor(page);
@@ -358,11 +375,11 @@ Bot.OpenMessageBox = async ({ page = Bot.page, data: { url, email, callback } })
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.FriendMessage = async ({ page = Bot.page, data: { url, email, message, callback } }) => {
+Bot.FriendMessage = async ({ page, data: { url, email, message, callback } }) => {
     // if (Bot.accounts.has(email!))
     // {
     //     // await Bot.Login({ page, data: { cookies: Bot.accounts[email!] } });
@@ -375,6 +392,8 @@ Bot.FriendMessage = async ({ page = Bot.page, data: { url, email, message, callb
     //     return;
     // }
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await Bot.OpenMessageBox({ page, data: { url, email } });
         const cursor = ghost_cursor_1.createCursor(page);
         await Bot.WaitRandom(page, 1500);
@@ -385,13 +404,16 @@ Bot.FriendMessage = async ({ page = Bot.page, data: { url, email, message, callb
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
 //returns cookies after logging in
-Bot.Login = async ({ page = Bot.page, data: { email, pass, cookies, message, callback } }) => {
+Bot.Login = async ({ page, data: { email, pass, cookies, proxy, message, callback } }) => {
     try {
+        const context = page.browser().defaultBrowserContext();
+        context.overridePermissions("https://www.facebook.com", ["geolocation", "notifications"]);
+        puppeteer_page_proxy_1.default(page, proxy || "");
         if (cookies) {
             await page.setCookie(...cookies);
             await page.goto("https://facebook.com/");
@@ -411,45 +433,21 @@ Bot.Login = async ({ page = Bot.page, data: { email, pass, cookies, message, cal
             await cursor.click(selectors_json_1.default.login);
         }
         await page.waitForSelector(selectors_json_1.default.search);
-        Bot.accounts[email] = await page.cookies();
-        Bot.loggedIn = true;
+        Bot.accounts[email] = new user_1.User(await page.cookies(), undefined, proxy || "");
         callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: await page.cookies() });
         return { success: true, data: await page.cookies() };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        Bot.CloseBrowser({ data: {} });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.Home = async ({ page = Bot.page, data: { callback } }) => {
+Bot.Home = async ({ page, data: { email, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto("https://facebook.com/");
         await Bot.WaitRandom(page, 1200);
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
-        return { success: true, data: (await page.cookies()) };
-    }
-    catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
-    }
-};
-Bot.Logout = async ({ page = Bot.page, data: { callback } }) => {
-    if (!Bot.loggedIn) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, error: null, data: null });
-        return { success: true, error: null, data: null };
-    }
-    try {
-        await page.goto("https://facebook.com");
-        const cursor = ghost_cursor_1.createCursor(page);
-        await cursor.click(selectors_json_1.default.account);
-        await Bot.WaitRandom(page, 1000);
-        await page.waitForSelector(selectors_json_1.default.logout);
-        await Bot.WaitRandom(page, 1000);
-        await cursor.click(selectors_json_1.default.logout);
-        await page.close();
-        await Bot.browser.close();
-        Bot.loggedIn = false;
         callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
         return { success: true, data: (await page.cookies()) };
     }
@@ -458,10 +456,51 @@ Bot.Logout = async ({ page = Bot.page, data: { callback } }) => {
         return { success: false, error: error };
     }
 };
-Bot.CloseBrowser = async ({ page = Bot.page, data: { callback } }) => {
+Bot.GetProfileURL = async ({ page, data: { email, callback } }) => {
     try {
-        if (Bot.browser)
-            await Bot.browser.close();
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
+        await page.goto("https://facebook.com/bookmarks");
+        await Bot.WaitRandom(page, 5000);
+        const url = await page.evaluate(() => (document.querySelectorAll("a[role='link']"))[26].href);
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: url });
+        return { success: true, data: url };
+    }
+    catch (error) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
+    }
+};
+Bot.Logout = async ({ page, data: { email, callback } }) => {
+    if (!Bot.accounts.hasOwnProperty(email)) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, error: null, data: null });
+        return { success: true, error: null, data: null };
+    }
+    try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
+        await page.goto("https://facebook.com");
+        const cursor = ghost_cursor_1.createCursor(page);
+        await cursor.click(selectors_json_1.default.account);
+        await Bot.WaitRandom(page, 1000);
+        await page.waitForSelector(selectors_json_1.default.logout);
+        await Bot.WaitRandom(page, 1000);
+        await cursor.click(selectors_json_1.default.logout);
+        await page.close();
+        // Bot.loggedIn = false;
+        delete Bot.accounts[email];
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
+        return { success: true, data: (await page.cookies()) };
+    }
+    catch (error) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
+    }
+};
+Bot.CloseBrowser = async ({ page, data: { callback } }) => {
+    try {
+        // if (Bot.browser)
+        //     await Bot.browser.close();
         callback === null || callback === void 0 ? void 0 : callback.call({ success: true, error: null, data: null });
         return { success: true, error: null, data: null };
     }
@@ -470,8 +509,10 @@ Bot.CloseBrowser = async ({ page = Bot.page, data: { callback } }) => {
         return { success: true, error: null, data: null };
     }
 };
-Bot.ListOfGroups = async ({ page = Bot.page, data: { callback } }) => {
+Bot.ListOfGroups = async ({ page, data: { email, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto("https://www.facebook.com/groups/feed/");
         await page.waitForSelector(selectors_json_1.default.search);
         const el = await Bot.autoScrollGroups(page);
@@ -481,12 +522,14 @@ Bot.ListOfGroups = async ({ page = Bot.page, data: { callback } }) => {
         return { success: true, data: el };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.AcceptReq = async ({ page = Bot.page, data: { url, callback } }) => {
+Bot.AcceptReq = async ({ page, data: { email, url, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...(Bot.accounts[email].Cookies));
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.friendRespond);
         await Bot.WaitRandom(page, 1000);
@@ -499,12 +542,14 @@ Bot.AcceptReq = async ({ page = Bot.page, data: { url, callback } }) => {
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.GetAllFriendReq = async ({ page = Bot.page, data: { callback } }) => {
+Bot.GetAllFriendReq = async ({ page, data: { email, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto("https://www.facebook.com/friends/requests");
         await page.waitForSelector(selectors_json_1.default.search);
         let error;
@@ -520,13 +565,37 @@ Bot.GetAllFriendReq = async ({ page = Bot.page, data: { callback } }) => {
         return { success: true, error, data: reqs };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.AcceptAllFriendReq = async ({ page = Bot.page, data: { callback } }) => {
+Bot.AcceptFriendReq = async ({ page, data: { email, url, callback } }) => {
     try {
-        const { data } = await Bot.GetAllFriendReq({ data: { callback: undefined } }) || {};
+        if (Bot.accounts[email].Proxy)
+            puppeteer_page_proxy_1.default(page, "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
+        await page.goto(url);
+        await Bot.WaitRandom(page, 3000);
+        const cursor = ghost_cursor_1.createCursor(page);
+        await page.waitForSelector(selectors_json_1.default.respond);
+        await cursor.click(selectors_json_1.default.respond);
+        await Bot.WaitRandom(page, 2000);
+        await cursor.click(selectors_json_1.default.confirmRequest);
+        await Bot.WaitRandom(page, 1000);
+        await page.goto("https://facebook.com/");
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: await page.cookies() });
+        return { success: true, data: await page.cookies() };
+    }
+    catch (error) {
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
+    }
+};
+Bot.AcceptAllFriendReq = async ({ page, data: { email, callback } }) => {
+    try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
+        const { data } = await Bot.GetAllFriendReq({ page, data: { callback: undefined } }) || {};
         const cursor = ghost_cursor_1.createCursor(page);
         if (!data)
             return { success: true, data: page.cookies() };
@@ -546,12 +615,14 @@ Bot.AcceptAllFriendReq = async ({ page = Bot.page, data: { callback } }) => {
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.PostOnPage = async ({ page = Bot.page, data: { message, url, callback } }) => {
+Bot.PostOnPage = async ({ page, data: { email, message, url, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.pageCreatePost);
         await page.$eval(selectors_json_1.default.pageCreatePost, (e) => e.scrollIntoView({ behavior: "smooth", block: "end" }));
@@ -569,12 +640,14 @@ Bot.PostOnPage = async ({ page = Bot.page, data: { message, url, callback } }) =
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.PostOnWall = async ({ page = Bot.page, data: { message, callback } }) => {
+Bot.PostOnWall = async ({ page, data: { email, message, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto("https://facebook.com/");
         await page.waitForSelector(selectors_json_1.default.postWall);
         await page.$eval(selectors_json_1.default.postWall, (e) => e.scrollIntoView({ behavior: "smooth", block: "end" }));
@@ -592,12 +665,14 @@ Bot.PostOnWall = async ({ page = Bot.page, data: { message, callback } }) => {
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.InviteFriendGroup = async ({ page = Bot.page, data: { url, message, callback } }) => {
+Bot.InviteFriendGroup = async ({ page, data: { email, url, message, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.setViewport({ width: 523, height: 674 });
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.inviteFriendGroup);
@@ -622,24 +697,28 @@ Bot.InviteFriendGroup = async ({ page = Bot.page, data: { url, message, callback
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.EnterGroup = async ({ page = Bot.page, data: { url, callback } }) => {
+Bot.EnterGroup = async ({ page, data: { email, url, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.search);
         callback === null || callback === void 0 ? void 0 : callback.call({ success: true, data: (await page.cookies()) });
         return { success: true, data: (await page.cookies()) };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.GetGroupMembers = async ({ page = Bot.page, data: { url, callback } }) => {
+Bot.GetGroupMembers = async ({ page, data: { email, url, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto(url);
         await page.waitForSelector(selectors_json_1.default.membersButton);
         await Bot.WaitRandom(page, 3000);
@@ -665,12 +744,14 @@ Bot.GetGroupMembers = async ({ page = Bot.page, data: { url, callback } }) => {
         return { success: true, data: members };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
-Bot.GetAvailableGroups = async ({ page = Bot.page, data: { message, callback } }) => {
+Bot.GetAvailableGroups = async ({ page, data: { email, message, callback } }) => {
     try {
+        puppeteer_page_proxy_1.default(page, Bot.accounts[email].Proxy || "");
+        await page.setCookie(...Bot.accounts[email].Cookies);
         await page.goto(`https://www.facebook.com/search/groups/?q=${message}`);
         await page.waitForSelector(selectors_json_1.default.search);
         await Bot.WaitRandom(page, 5000);
@@ -682,7 +763,8 @@ Bot.GetAvailableGroups = async ({ page = Bot.page, data: { message, callback } }
                 const el = await page.$(selector);
                 const href = await (el === null || el === void 0 ? void 0 : el.evaluate((e) => (e.querySelectorAll("a")[1]).href));
                 const name = await (el === null || el === void 0 ? void 0 : el.evaluate((e) => (e.querySelectorAll("a")[1]).textContent));
-                groups.push({ name: name, url: href });
+                const data = await (el === null || el === void 0 ? void 0 : el.evaluate((e) => (e.querySelectorAll("span[dir='auto']")[1].firstChild).textContent));
+                groups.push({ name: name, url: href, data: data });
             }
             catch (_a) { }
         }
@@ -690,8 +772,8 @@ Bot.GetAvailableGroups = async ({ page = Bot.page, data: { message, callback } }
         return { success: true, data: groups };
     }
     catch (error) {
-        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error });
-        return { success: false, error };
+        callback === null || callback === void 0 ? void 0 : callback.call({ success: false, error: error });
+        return { success: false, error: error };
     }
 };
 //# sourceMappingURL=index.js.map
